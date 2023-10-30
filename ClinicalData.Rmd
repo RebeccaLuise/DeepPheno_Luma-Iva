@@ -1,0 +1,48 @@
+---
+title: "Clinical data"
+date: "`r Sys.Date()`"
+author: "Rebecca Luise Knoll"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = FALSE)
+```
+
+```{r path and packages, include=FALSE}
+setwd("/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva")
+getwd() 
+
+# install and load all needed packages
+library(pacman)
+pacman::p_load(tidyverse, phyloseq, magrittr, janitor, microbiome, knitr, lubridate, naniar, stringr)
+
+renv::activate()
+renv::status()
+renv::snapshot()
+```
+
+# Load data
+```{r load data}
+
+data <- readRDS("~/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/data/Metadata_filt_2.rds")
+
+data_unique <- data %>% 
+  distinct(probe_id, .keep_all = T) %>% 
+  mutate(visit_numeric = as.numeric(visit)) %>% 
+  filter(visit_numeric<=9)
+
+summary(data_unique$id)
+summary(data_unique$visit_date)
+data_unique %>% 
+  filter(is.na(visit_2))
+
+# add visit_sum
+data_unique <- data_unique%>%
+  mutate(visit_sum = case_when(visit == "1" ~ "1", visit == "2"|visit=="3"~ "2-3", visit=="4" | visit=="5"~ "3-5", visit=="6" | visit=="7" ~ "6-7", visit=="8"| visit=="9" ~ "8-9"))%>%
+  mutate(visit_sum = as.factor(visit_sum))
+
+data_unique %>% 
+  count(visit_sum)
+
+```
+
