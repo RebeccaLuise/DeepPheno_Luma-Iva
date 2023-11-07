@@ -16,6 +16,7 @@ getwd()
 library(pacman)
 pacman::p_load(tidyverse, phyloseq, magrittr, janitor, microbiome, knitr, lubridate, naniar, stringr)
 
+
 renv::activate()
 renv::status()
 renv::snapshot()
@@ -24,25 +25,51 @@ renv::snapshot()
 # Load data
 ```{r load data}
 
-data <- readRDS("~/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/data/Metadata_filt_2.rds")
+data <- readRDS("/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/data/metadata_combined_031123.rds")
 
-data_unique <- data %>% 
-  distinct(probe_id, .keep_all = T) %>% 
-  mutate(visit_numeric = as.numeric(visit)) %>% 
-  filter(visit_numeric<=9)
+data$gender <- as_factor(data$gender)
+data  <- data %>% 
+  mutate(sex = case_when(gender==0 ~ "male", gender==1 ~ "female")) %>% 
+  mutate(sex=as_factor(sex))
+# filter per visit
 
-summary(data_unique$id)
-summary(data_unique$visit_date)
-data_unique %>% 
-  filter(is.na(visit_2))
+data_v1 <- data %>% 
+  filter(visit=="1")
+data_v2 <- data %>% 
+  filter(visit=="2")
+data_v3 <- data %>% 
+  filter(visit=="3")
+data_v4 <- data %>% 
+  filter(visit=="4")
+data_v5 <- data %>% 
+  filter(visit=="5")
+data_v6 <- data %>% 
+  filter(visit=="6")
+data_v7 <- data %>% 
+  filter(visit=="7")
+data_v8 <- data %>% 
+  filter(visit=="8")
+data_v9 <- data %>% 
+  filter(visit=="9")
+```
+# Cohort characteristics at baseline
+```{r Cohort characteristics at baseline}
 
-# add visit_sum
-data_unique <- data_unique%>%
-  mutate(visit_sum = case_when(visit == "1" ~ "1", visit == "2"|visit=="3"~ "2-3", visit=="4" | visit=="5"~ "3-5", visit=="6" | visit=="7" ~ "6-7", visit=="8"| visit=="9" ~ "8-9"))%>%
-  mutate(visit_sum = as.factor(visit_sum))
+library(gtsummary)
 
-data_unique %>% 
-  count(visit_sum)
+baseline <- data_v1 %>% select(sex, age, bmi_zscore, pp_fev1, pp_fvc)
+b_table <- baseline %>% tbl_summary(type = c( age = "continuous", bmi_zscore = "continuous", pp_fev1= "continuous", pp_fvc= "continuous"),missing="no")
+
+baseline %>% tbl_summary(type = c( age = "continuous", bmi_zscore = "continuous", pp_fev1= "continuous", pp_fvc= "continuous"),missing="no")%>%
+  as_gt() %>%
+  gt::gtsave(filename = "baseline.docx")
+
+
+trial2 <- data %>% select(visit, sex, age, bmi_zscore, pp_fev1, pp_fvc)
+
+trial2%>% tbl_summary(by=visit, type = c( age = "continuous", bmi_zscore = "continuous", pp_fev1= "continuous", pp_fvc= "continuous"), missing="no")%>%
+  as_gt() %>%
+  gt::gtsave(filename = "characteristics_allVisits.docx")
 
 ```
 

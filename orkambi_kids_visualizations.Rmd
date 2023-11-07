@@ -29,47 +29,77 @@ ps_orkambi_work_rel <- readRDS("~/Documents/Forschung/Orkambi_Kids/Paper/DeepPhe
 ### Preprocessing    
 
 ```{r prepare metadata, include=FALSE}
-
 Metadata_filt_2_1_9 <- data.frame(sample_data(ps_orkambi_work))
 Metadata_filt_2_1_9$total_reads <- sample_sums(ps_orkambi_work)
 
-Metadata_filt_2_1_9$pp_fev1
-
 metadata_unique <- Metadata_filt_2_1_9[!duplicated(Metadata_filt_2_1_9[ , c("probe_id")]), ]
 
-# add ig_g response
+#write_csv(metadata_unique, "/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/metadata_raw.csv")
+# I have to add missing lung functions and sweat chlorides from id8, i do this directly in the generated csv and reload the file
 
+metadata_complete <- read_delim("/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/data/metadata_complete.csv")
+metadata_complete <- metadata_complete %>% 
+  mutate(id_visit=paste(id, visit, sep="_"))
+
+# combine with liver enzymes
+liver_df <- readxl::read_excel("/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/Liver_enzymes_all.xlsx")
+
+liver_df <- liver_df %>% 
+  mutate(id_visit=paste(id, visit, sep="_")) %>% 
+  select(id_visit, GOT,GPT)
+
+metadata_complete <- metadata_complete%>% 
+  left_join(liver_df, by="id_visit")
+
+# add ig_g response
 # igg_response
 # 0 = bad
 # 1 = good
-metadata_unique <- metadata_unique %>%
+
+metadata_complete <- metadata_complete %>%
    mutate(igg_response = case_when(id == 2 | id == 3 | id == 4 ~ FALSE,
                                  TRUE ~ TRUE)) %>%
    relocate(igg_response, .before = base)
 
-
 # As id 8 is often the only participant with a V8 and that ruins visualization I will create a new variable where V8 is V9
+metadata_complete <- metadata_complete%>%
+  mutate(visit_wo8 = case_when(visit == 8~9, TRUE~visit))
 
-metadata_unique <- metadata_unique%>%
-  mutate(visit_wo8 = case_when(visit == "8"~"9", TRUE~visit))
-
-# add deltas for lung function  stb tt days and inflammatory parameters
-metadata_unique$pp_fev1[metadata_unique$probe_id=="SH15V1"]<-100.90 
-
-metadata_unique <- metadata_unique%>%
-  mutate(baseline_ppfev1 = case_when(visit == "1" ~ pp_fev1))%>%
+metadata_complete <- metadata_complete%>%
+  mutate(baseline_ppfev1 = case_when(visit == 1 ~ pp_fev1))%>%
   group_by(id)%>%
   fill(baseline_ppfev1)%>%
   mutate(delta_ppfev1 = pp_fev1-baseline_ppfev1)%>%
   ungroup()
 
-m_s <- metadata_unique %>% 
+metadata_complete %>% 
+  tabyl(id, visit)
+
+```
+
+```{r adjust metadata complete classes}
+metadata_complete <- metadata_complete %>% 
+  mutate(id=as_factor(id)) %>% 
+  mutate(visit=as_factor(visit)) %>% 
+  mutate(material=as_factor(material)) %>% 
+  mutate(visit_wo8=as_factor(visit_wo8))
+
+#write_rds(metadata_complete, "/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/data/metadata_combined_031123.rds")
+```
+
+
+
+```{r add updated metadata to phyloseqs}
+
+metadata_ps <- metadata_complete %>% 
+  filter(!is.na(label))
+
+m_s <- metadata_ps %>% 
   select(probe_id, igg_response, delta_ppfev1, visit_wo8)
 
-
+#write_csv(metadata_unique, "/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/metadata_unique.csv")
 
 # add to phyloseqs
-
 ps_orkambi_work <- ps_join(ps_orkambi_work, m_s, by="probe_id")
 
 ps_orkambi_work_rel <- ps_join(ps_orkambi_work_rel, m_s, by="probe_id")
@@ -119,6 +149,12 @@ ggplot(Metadata_filt_2_1_9, aes(material)) +
   geom_bar(aes(fill = material)) +
   scale_fill_manual(name = "visit", values = my_colors_material) +
   theme_bw()
+
+system_colors <- c("#A8465D","#AA7A38","#A5C9A5")
+
+my_colors_id <- c("#C03728FF", "#919C4CFF", "#FD8F24FF", "#F5C04AFF", "#E68C7CFF", "#C3C377FF", "#4F5157FF", "#6F5438FF") # "#828585FF",
+
+paletteer::paletteer_d("ggpomological::pomological_palette")     
 ```
 
 ### Visualizations
@@ -140,7 +176,7 @@ Metadata_filt_2_1_9$material <- factor(Metadata_filt_2_1_9$material, levels = c(
 
 plot_ordination(ps_orkambi_work, ordinate(ps_orkambi_work, "MDS"), color = "material") + 
   geom_point(size = 3) +
-  theme_bw() +
+  theme_minimal()+
   #ggtitle("Taxa by material") +
   scale_colour_manual(name = "material", values = my_colors_material) 
 
@@ -149,19 +185,19 @@ plot_ordination(ps_orkambi_work, ordinate(ps_orkambi_work, "MDS"), color = "mate
 TopNOTUs_rel <- names(sort(taxa_sums(ps_orkambi_work_rel), TRUE)[1:20])
 ent20_rel <- prune_taxa(TopNOTUs_rel, ps_orkambi_work_rel)
 plot_bar(ent20_rel, "id", fill = "genus", facet_grid = material ~ visit)+
-  theme_bw() +
+  theme_minimal()+
   ggtitle("Most abundant genera") +
   ylab("Relative Abundance")
 
 plot_bar(ps_orkambi_work_rel, "id", fill = "phylum", facet_grid = material ~ visit)+
-  theme_bw() +
+  theme_minimal()+
   ggtitle("Most abundant phyla") +
   ylab("Relative Abundance")
 
 TopNOTUs_rel_ab <- names(sort(taxa_sums(ps_orkambi_work_rel), TRUE)[1:15])
 ent10_rel_ab <- prune_taxa(TopNOTUs_rel_ab, ps_orkambi_work_rel)
 plot_bar(ent10_rel_ab, "material", facet_grid = ~genus) +
-  theme_bw() +
+  theme_minimal()+
   theme(axis.text.x = element_text(size=6, angle=90)) +
   ylab("Relative Abundance") 
 
@@ -169,7 +205,7 @@ plot_bar(ent10_rel_ab, "material", facet_grid = ~genus) +
 Metadata_filt_2_1_9 %>%
  ggplot(aes(probe_id, quantity_mean))+
  geom_point(aes(color = id)) +
-  theme_bw() +
+  theme_minimal()+
   scale_y_log10()+
   facet_grid(rows=vars(material))+
   theme(axis.text.x = element_text(size=6, angle=90))+
@@ -180,7 +216,7 @@ Metadata_filt_2_1_9 %>%
 metadata_unique %>%
   filter(pp_fev1 > 5) %>%
   ggplot(aes(x=visit, y=pp_fev1)) +
-  theme_bw() +
+  theme_minimal()+
   geom_boxplot() +
   geom_line(aes(x = visit, group = id, color = id)) +
   geom_point(aes(x = visit, color = id)) +
@@ -193,7 +229,7 @@ metadata_unique %>%
 metadata_unique %>%
   #filter(id != 3) %>%
   ggplot(aes(x=visit, y=lci)) +
-  theme_bw() +
+  theme_minimal()+
   geom_boxplot() +
   geom_line(aes(x = visit, group = id, color = id)) +
   geom_point(aes(x = visit, color = id)) +
@@ -206,7 +242,7 @@ metadata_unique %>%
 metadata_unique %>%
   filter(visit == 1 | visit == 2 | visit == 5) %>%
   ggplot(aes(x=visit, y=sweatchloride_mmol_l)) +
-  theme_bw() +
+  theme_minimal()+
   geom_boxplot() +
   geom_line(aes(x = visit, group = id, color = id)) +
   geom_point(aes(x = visit, color = id)) +
@@ -221,7 +257,7 @@ Metadata_filt_2_1_9 %>%
   #unique(.$probe_id) %>%
   filter(pp_fev1 > 5) %>%
   ggplot(aes(x=visit, y=pp_fev1)) +
-  theme_bw() +
+  theme_minimal()+
   geom_boxplot() +
   geom_line(aes(x = visit, group = id, color = id)) +
   geom_point(aes(x = visit, color = id)) +
@@ -262,7 +298,7 @@ sample_data(ps_orkambi_work)$material <- factor(sample_data(ps_orkambi_work)$mat
 # general
   plot_richness(ps_orkambi_work, x = "material", color = "material", measures = c("Observed", "Shannon", "Simpson")) +
   geom_boxplot(aes(color = material)) + 
-  theme_bw() +
+  theme_minimal()+
   geom_point(position = position_dodge(width = 0.75)) +
   scale_colour_manual(name = "material", values = my_colors_material) +
   #ggtitle("Alpha-Diversity (all materials)") +
@@ -273,7 +309,7 @@ sample_data(ps_orkambi_work)$material <- factor(sample_data(ps_orkambi_work)$mat
 plot_richness(ps_orkambi_vx_t, x = "visit_2", color = "visit_2", measures = c("Observed", "Shannon", "Simpson")) + 
   geom_boxplot(aes(color = visit_2)) + 
   geom_point(position = position_dodge(width = 0.75)) +
-  theme_bw() +
+  theme_minimal()+
   #ggtitle("Alpha-Diversity (throat)") +
   #geom_line() +
   theme(legend.position = "none") +
@@ -284,7 +320,7 @@ plot_richness(ps_orkambi_vx_t, x = "visit_2", color = "visit_2", measures = c("O
 plot_richness(ps_orkambi_vx_st, x = "visit_2", color = "visit_2", measures = c("Observed", "Shannon", "Simpson")) + 
   geom_boxplot(aes(color = visit_2)) + 
   geom_point(position = position_dodge(width = 0.75)) +
-  theme_bw() +
+  theme_minimal()+
   #ggtitle("Alpha-Diversity (stool)") +
   geom_smooth() +
   theme(legend.position = "none") +
@@ -295,7 +331,7 @@ plot_richness(ps_orkambi_vx_st, x = "visit_2", color = "visit_2", measures = c("
 plot_richness(ps_orkambi_vx_s, x = "visit_2", color = "visit_2", measures = c("Observed", "Shannon", "Simpson")) + 
   geom_boxplot(aes(color = visit_2)) + 
   geom_point(position = position_dodge(width = 0.75)) +
-  theme_bw() +
+  theme_minimal()+
   #ggtitle("Alpha-Diversity (sputum)") +
   geom_smooth() +
   theme(legend.position = "none") +
@@ -346,14 +382,14 @@ ent15_rel_sp_5 <- prune_taxa(TopNOTUs_rel_sp_5, ps_orkambi_sputum_rel)
 
 plot_bar(ps_orkambi_sputum_rel, fill="phylum") +
   facet_wrap(~id, scales="free_x", nrow=1) +
-  theme_bw() +
+  theme_minimal()+
   theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust = 1)) +
   ylab("Relative Abundance") +
   ggtitle("Sputum Samples on Phylum Level (by id)") # nach id
 
 # poster plot
 pp <- plot_bar(ps_orkambi_sputum_rel, fill="phylum") + 
-  theme_bw() +
+  theme_minimal()+
   facet_wrap(~visit, scales="free_x", nrow=1) +
   theme(axis.text.x = element_blank(), legend.position = "bottom") +
   ggtitle("Sputum Samples on Phylum Level (by visit)") +
@@ -363,14 +399,14 @@ ggsave(plot = pp, width = 6.5, height = 5, dpi = 300, filename = "sputum_samples
 
 # id and visit
 plot_bar(ps_orkambi_sputum_rel, "id", fill = "phylum", facet_grid = material ~ visit) + 
-  theme_bw() +
+  theme_minimal()+
   ylab("Relative Abundance") +
   ggtitle("Sputum Samples on Phylum Level (by id and visit)")
 
 # most abundant
 plot_bar(ent15_rel_sp, fill="genus") + 
   facet_wrap(~visit, scales="free_x", nrow=1) +
-  theme_bw() +
+  theme_minimal()+
   theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust = 1)) +
   ggtitle("Sputum Samples on Genus Level (by visit)") +
   ylab("Relative Abundance")
@@ -378,20 +414,20 @@ plot_bar(ent15_rel_sp, fill="genus") +
 # barplot like whole genome
 plot_bar(ent15_rel_sp_5, fill="genus") +
   facet_wrap(~id, scales="free_x", nrow=1, labeller = "label_both") +
-  theme_bw() +
+  theme_minimal()+
   theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust = 1)) +
   ylab("Relative Abundance") +
   xlab("Sputum Samples")
 plot_bar(ent15_rel_sp_5, fill="genus") +
   facet_wrap(~visit, scales="free_x", nrow=1, labeller = "label_both") +
-  theme_bw() +
+  theme_minimal()+
   theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust = 1)) +
   ylab("Relative Abundance") +
   xlab("Sputum Samples")
 
 # most abundant
 plot_bar(ent15_rel_sp, "id", fill = "genus", facet_grid = material ~ visit) + 
-  theme_bw() +
+  theme_minimal()+
   ylab("Relative Abundance") +
   ggtitle("Sputum Samples on Genus Level (by id and visit)")
 
@@ -399,7 +435,7 @@ plot_bar(ent15_rel_sp, "id", fill = "genus", facet_grid = material ~ visit) +
 ## alpha diversity
 
 plot_richness(ps_orkambi_sputum, x = "visit", measures = c("Observed", "Shannon", "Simpson")) +
-  theme_bw() +
+  theme_minimal()+
   geom_boxplot() +
   geom_line(aes(x = visit, group = id, color = id)) +
   geom_point(aes(x = visit, color = id)) +
@@ -458,8 +494,6 @@ plot_ordination(ps_orkambi_sputum_rel, plot_ord_data_sp, type="taxa", color = "p
 plot_ordination(ps_orkambi_sputum_rel, plot_ord_data_sp, type = "saples", color = "id", title="Samples by id") +
     scale_colour_manual(values = my_colors_id) +
   stat_ellipse()
-
-
 ```
 
 
@@ -468,7 +502,6 @@ plot_ordination(ps_orkambi_sputum_rel, plot_ord_data_sp, type = "saples", color 
 ```{r throat, warning=FALSE, fig.dim = c(8, 8)}
 
 ## general
-
 nsamples(ps_orkambi_throat)
 ntaxa(ps_orkambi_throat)
 min(otu_table(ps_orkambi_throat, TotalReads))
@@ -503,20 +536,20 @@ tax_table(ent15_rel_th_5)
 
 plot_bar(ps_orkambi_throat_rel, fill="phylum") +
   facet_wrap(~id, scales="free_x", nrow=1) +
-  theme_bw() +
+  theme_minimal()+
   theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust = 1)) +
   ylab("Relative Abundance") +
   ggtitle("Throat Samples on Phylum Level")
 
 plot_bar(ent15_rel_th_5, fill="genus") +
   facet_wrap(~id, scales="free_x", nrow=1) +
-  theme_bw() +
+  theme_minimal()+
   theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust = 1)) +
   ylab("Relative Abundance") +
   ggtitle("Throat Samples on Genus Level")
 
 plot_bar(ps_orkambi_throat_rel, fill="phylum") + 
-  theme_bw() +
+  theme_minimal()+
   facet_wrap(~visit, scales="free_x", nrow=1) +
   theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust = 1)) +
   ggtitle("Throat Samples on Phylum Level (by visit)") +
@@ -524,13 +557,13 @@ plot_bar(ps_orkambi_throat_rel, fill="phylum") +
 
 # id and visit
 plot_bar(ps_orkambi_throat_rel, "id", fill = "phylum", facet_grid = material ~ visit) + 
-  theme_bw() +
+  theme_minimal()+
   ylab("Relative Abundance") +
   ggtitle("Sputum Samples on Phylum Level (by id and visit)")
 
 plot_bar(ent15_rel_th, fill="genus") + 
   facet_wrap(~visit, scales="free_x", nrow=1) +
-  theme_bw() +
+  theme_minimal()+
   theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust = 1)) +
   ggtitle("Throat Samples on Genus Level (by visit)") +
   ylab("Relative Abundance")
@@ -538,19 +571,19 @@ plot_bar(ent15_rel_th, fill="genus") +
 # like whole genome
 plot_bar(ent15_rel_th_5, fill="genus") +
   facet_wrap(~id, scales="free_x", nrow=1, labeller = "label_both") +
-  theme_bw() +
+  theme_minimal()+
   theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust = 1)) +
   ylab("Relative Abundance")+
   xlab("Throat Samples")
 plot_bar(ent15_rel_th_5, fill="genus") +
   facet_wrap(~visit, scales="free_x", nrow=1, labeller = "label_both") +
-  theme_bw() +
+  theme_minimal()+
   theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust = 1)) +
   ylab("Relative Abundance") +
   xlab("Throat Samples")
 
 plot_bar(ent15_rel_th, "id", fill = "genus", facet_grid = material ~ visit) + 
-  theme_bw() +
+  theme_minimal()+
   ylab("Relative Abundance") +
   ggtitle("Throat Samples on Genus Level (by id)")
 
@@ -558,7 +591,7 @@ plot_bar(ent15_rel_th, "id", fill = "genus", facet_grid = material ~ visit) +
 ## alpha diversity
 
 plot_richness(ps_orkambi_throat, x = "visit", color = "id", measures = c("Observed", "Shannon", "Simpson")) + 
-  theme_bw() +
+  theme_minimal()+
   scale_colour_manual(values = my_colors_id)
 
 plot_richness(ps_orkambi_throat, x = "visit", measures = c("Observed", "Shannon", "Simpson")) +
@@ -567,7 +600,7 @@ plot_richness(ps_orkambi_throat, x = "visit", measures = c("Observed", "Shannon"
   theme_bw()
 
 plot_richness(ps_orkambi_throat, x = "visit", measures = c("Observed", "Shannon", "Simpson")) +
-  theme_bw() +
+  theme_minimal()+
   geom_boxplot() +
   geom_line(aes(x = visit, group = id, color = id)) +
   geom_point(aes(x = visit, color = id)) +
@@ -626,7 +659,6 @@ plot_ordination(ps_orkambi_throat, plot_ord_data_th, type = "samples", color = "
 ```{r stool, warning=FALSE, fig.dim = c(8, 8)}
 
 ## general
-
 nsamples(ps_orkambi_stool)
 ntaxa(ps_orkambi_stool)
 min(otu_table(ps_orkambi_stool, TotalReads))
@@ -660,20 +692,20 @@ ent15_rel_st_5 <- prune_taxa(TopNOTUs_rel_st_5, ps_orkambi_stool_rel)
 
 plot_bar(ps_orkambi_stool_rel, fill="phylum") +
   facet_wrap(~id, scales="free_x", nrow=1) +
-  theme_bw() +
+  theme_minimal()+
   theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust = 1)) +
   ylab("Relative Abundance") +
   ggtitle("Stool Samples on Phylum Level")
 
 plot_bar(ent15_rel_st_5, fill="genus") +
   facet_wrap(~id, scales="free_x", nrow=1) +
-  theme_bw() +
+  theme_minimal()+
   theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust = 1)) +
   ylab("Relative Abundance") #+
   #ggtitle("Stool Samples on Phylum Level")
 
 plot_bar(ps_orkambi_stool_rel, fill="phylum") + 
-  theme_bw() +
+  theme_minimal()+
   facet_wrap(~visit, scales="free_x", nrow=1) +
   theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust = 1)) +
   ggtitle("Stool Samples on Phylum Level (by visit)") +
@@ -681,13 +713,13 @@ plot_bar(ps_orkambi_stool_rel, fill="phylum") +
 
 # id and visit
 plot_bar(ps_orkambi_stool_rel, "id", fill = "phylum", facet_grid = material ~ visit) + 
-  theme_bw() +
+  theme_minimal()+
   ylab("Relative Abundance") +
   ggtitle("Sputum Samples on Phylum Level (by id and visit)")
 
 plot_bar(ent15_rel_st, fill="genus") + 
   facet_wrap(~visit, scales="free_x", nrow=1) +
-  theme_bw() +
+  theme_minimal()+
   theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust = 1)) +
   ggtitle("Stool Samples on Genus Level (by visit)") +
   ylab("Relative Abundance")
@@ -695,19 +727,19 @@ plot_bar(ent15_rel_st, fill="genus") +
 # barplot like whole genome
 plot_bar(ent15_rel_st_5, fill="genus") +
   facet_wrap(~id, scales="free_x", nrow=1, labeller = "label_both") +
-  theme_bw() +
+  theme_minimal()+
   theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust = 1)) +
   ylab("Relative Abundance") +
   xlab("Stool Samples")
 plot_bar(ent15_rel_st_5, fill="genus") +
   facet_wrap(~visit, scales="free_x", nrow=1, labeller = "label_both") +
-  theme_bw() +
+  theme_minimal()+
   theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust = 1)) +
   ylab("Relative Abundance") +
   xlab("Stool Samples")
 
 plot_bar(ent15_rel_st, "id", fill = "genus", facet_grid = material ~ visit) + 
-  theme_bw() +
+  theme_minimal()+
   ylab("Relative Abundance") +
   ggtitle("Stool Samples on Genus Level (by id)")
 
@@ -716,7 +748,7 @@ plot_bar(ent15_rel_st, "id", fill = "genus", facet_grid = material ~ visit) +
 
 # it seems do get better over the visits -> investigate!
 plot_richness(ps_orkambi_stool, x = "visit", color = "id", measures = c("Observed", "Shannon", "Simpson")) + 
-  theme_bw() +
+  theme_minimal()+
   geom_line(aes(x = visit, group = id, color = id)) +
   scale_colour_manual(values = my_colors_id)
 
@@ -726,7 +758,7 @@ plot_richness(ps_orkambi_stool, x = "visit", measures = c("Observed", "Shannon",
   theme_bw() 
 
 plot_richness(ps_orkambi_stool, x = "visit", measures = c("Observed", "Shannon", "Simpson")) +
-  theme_bw() +
+  theme_minimal()+
   geom_boxplot() +
   geom_line(aes(x = visit, group = id, color = id)) +
   geom_point(aes(x = visit, color = id)) +
@@ -782,17 +814,20 @@ plot_ordination(ps_orkambi_stool, ordination_st, color = "id") +
   theme(aspect.ratio=1) +
   #ggtitle("PCoA - Patient IDs (stool)") +
   geom_point(size = 1) +
-  theme_bw() +
+  theme_minimal()+
    scale_colour_manual(values = my_colors_id) +
   stat_ellipse()
 
 plot_ord_data_st <- ordinate(ps_orkambi_stool_rel, "NMDS", "bray")
 plot_ordination(ps_orkambi_stool_rel, plot_ord_data_st, type="taxa", color = "phylum", title="Taxa")
 plot_ordination(ps_orkambi_stool_rel, plot_ord_data_st, type = "sample", color = "id", title="Samples by id (stool)")+
-  theme_bw() +
+  theme_minimal()+
   scale_colour_manual(values = my_colors_id) +
   stat_ellipse()
 
+stressplot(plot_ord_data_st)
+stressplot(plot_ord_data_sp)
+#stressplot(plot_ord_data_thr)
 ```
 
 # Add dominant taxa to phyloseq metadata in sputum 
@@ -821,6 +856,7 @@ ps_full <- ps_orkambi_sputum_rel
   sample_data(ps_full)$dominant_genus <- top_sputum_df$dominantGenus
 
 ```
+
 # Add dominant taxa to phyloseq metadata in throat 
 ```{r Add dominant taxa to phyloseq metadata}
 ps_glom_throat <-  tax_glom(ps_orkambi_throat_rel, taxrank = "genus")
@@ -841,56 +877,81 @@ ps_full_throat <- ps_orkambi_throat_rel
   # add the dominant genus to ps
   sample_data(ps_glom_throat)$dominant_genus <- top_throat_df$dominantGenus
   sample_data(ps_full_throat)$dominant_genus <- top_throat_df$dominantGenus
+```
+
+```{r assign comparisons}
+
+my_comp5 <- list(c("1","2"), c("1","5"))
 
 ```
 
 # Figure 1 systemic responses
 ```{r systemic responses}
 # sweat chloride
-metadata_unique$sweatchloride_mmol_l
-
-p1 <- metadata_unique %>%
+p1 <- metadata_complete %>%
   filter(visit%in% c("1","2","5")) %>% 
   ggplot(aes(x=visit, y=sweatchloride_mmol_l)) +
-  theme_bw() +
-  geom_boxplot() +
-  geom_line(aes(x = visit, group = id, color = id)) +
+  theme_minimal()+
+  geom_boxplot(aes(alpha=0.7)) +
+  geom_line(aes(x = visit, group = id, color = id, alpha=0.7), size=3) +
   geom_point(aes(x = visit, color = id), size=2.5) +
   ylab("Sweat chloride (mmol/l)")+
-   theme(text = element_text(size=16), legend.position = "none") +
-  #ggtitle("Lung Function")+
-  scale_color_manual(name = "id", values = my_colors_id) 
-
+  theme(text = element_text(size=16), legend.position = "left") +
+  guides(alpha = FALSE)+
+  scale_color_manual(name = "id", values = my_colors_id) +
+  stat_compare_means(comparisons = )
+p1
 # Inflammation 
-p2 <- metadata_unique%>%
+p2 <- metadata_complete%>%
   filter(visit!="6") %>% 
   ggplot(aes(x=visit_wo8, y= ig_g)) +
-  theme_bw() +
-  geom_boxplot(alpha=0.7) +
-  geom_line(aes(x = visit_wo8, group = id, color = id)) +
+  theme_minimal()+
+  geom_boxplot(aes(alpha=0.7)) +
+  geom_line(aes(x = visit_wo8, group = id, color = id,alpha=0.7), size=3) +
   geom_point(aes(x = visit_wo8, color = id), size=2.5) +
   ylab("IgG (g/l)")+
+  xlab("visit")+
   theme(text = element_text(size=16), legend.position = "none") +
   scale_color_manual(name = "id", values = my_colors_id)+
   scale_y_log10()
 
-p3 <- metadata_unique%>%
+p3 <- metadata_complete%>%
   filter(visit!="6") %>% 
   ggplot(aes(x=visit_wo8, y= leukos)) +
-  theme_bw() +
-  geom_boxplot() +
-  geom_line(aes(x = visit_wo8, group = id, color = id)) +
+  theme_minimal()+
+  geom_boxplot(aes(alpha=0.7)) +
+  geom_line(aes(x = visit_wo8, group = id, color = id,alpha=0.7), size=3) +
   geom_point(aes(x = visit_wo8, color = id), size=2.5) +
-  ylab("Leucocytes in serum")+
+  ylab("Leucocytes in serum /nl")+
   xlab("visit")+
   theme(text = element_text(size=16), legend.position = "none") +
   scale_color_manual(name = "id", values = my_colors_id)+
   scale_y_log10()
 
  # Metabolome
+# load Metabolome figures from Metabolome script via loadRDS
+p4 <- readRDS("/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/Ivacaftor_RP_pos.rds")
+p5 <- readRDS("/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/Tryptophan_RP_neg.rds")
 
-p4
-p5
+p4 <- p4 +
+  geom_point(aes(color = as_factor(id)), size=2.5) +
+  #geom_text(aes(label = as_factor(id)))+ 
+  geom_boxplot(aes(alpha=0.7)) +
+  ylab("Ivacaftor (MS Intensity)")+
+  xlab("visit")+
+  theme_minimal()+
+  theme(text = element_text(size=16), legend.position = "none") +
+  scale_color_manual(name = "id", values = my_colors_id)
+  
+p5 <- p5+
+  geom_boxplot(aes(fill=NULL, alpha=0.7))+
+  geom_point(aes(color = as_factor(id)), size=2.5) +
+  #geom_text(aes(label = as_factor(id)))+ 
+  ylab("Tryptophan (MS Intensity)")+
+  xlab("visit")+
+  theme_minimal()+
+  theme(text = element_text(size=16), legend.position = "none") +
+  scale_color_manual(name = "id", values = my_colors_id)
 
 library(gridExtra)
 # Arrange the ggplot objects in a grid
@@ -899,62 +960,156 @@ grid_arranged <- grid.arrange(
   p2 + labs(tag = "B"),
   p3 + labs(tag = "C"),
   p4 + labs(tag = "D"),
-  p6 + labs(tag = "E"),
-  p7 + labs(tag = "F"),
-  p8 + labs(tag = "G"),
-  ncol = 4, nrow = 3,
+  p5 + labs(tag = "E"),
+  ncol = 6, nrow = 2,
   #heights = c(1.25, 1.15, 1.25, 1.35),
-  layout_matrix = rbind(c(1, 1, 2, 3),
-                        c(4, 4, 5, 5),
-                        c(6, 6, 7, 7)
+  layout_matrix = rbind(c(1, 1, 2, 2, 3, 3),
+                        c(4, 4, 4, 5, 5, 5)
 ))
 
 # Print or save the arranged plot
 print(grid_arranged)
 
-#ggsave(plot = grid_arranged,"~/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/resp_fig.png",dpi = 600, width = 12, height = 12)
-
+ggsave(plot=grid_arranged, "~/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/system_fig.png",dpi = 600, width = 12, height = 8)
 
 ```
 
-# Figure 2 respiratory system
-```{r}
-# ppFEV1
-metadata_unique$pp_fev1
 
-p1 <- metadata_unique %>%
-  filter(pp_fev1 > 5) %>%
-  ggplot(aes(x=visit, y=delta_ppfev1)) +
-  theme_bw() +
-  geom_boxplot() +
-  geom_line(aes(x = visit, group = id, color = id)) +
+# Figure 1 gastrointestinal responses
+```{r gastrointestinal responses}
+# BMI
+p1 <- metadata_complete %>%
+  ggplot(aes(x=visit, y=bmi_zscore)) +
+  theme_minimal()+
+  geom_boxplot(aes(alpha=0.7)) +
+  geom_line(aes(x = visit, group = id, color = id, alpha=0.7), size=3) +
   geom_point(aes(x = visit, color = id), size=2.5) +
-  ylab(" Delta ppFEV1 from baseline")+
+  ylab("BMI Z-score")+
    theme(text = element_text(size=16), legend.position = "none") +
   #ggtitle("Lung Function")+
   scale_color_manual(name = "id", values = my_colors_id) 
 
 # Inflammation 
-p2 <- metadata_unique%>%
-  filter(visit %in% c("1","2","3","4","5")) %>%
-  ggplot(aes(x=visit, y= il1beta)) +
-  theme_bw() +
-  geom_boxplot() +
-  geom_line(aes(x = visit, group = id, color = id)) +
+p2 <- metadata_complete%>%
+  ggplot(aes(x=visit, y= calprotectin)) +
+  theme_minimal()+
+  geom_boxplot(aes(alpha=0.7)) +
+  geom_line(aes(x = visit, group = id, color = id, alpha=0.7), size=3) +
   geom_point(aes(x = visit, color = id), size=2.5) +
-  ylab("IL-1ß in sputum")+
+  ylab("Calprotectin (µg/g) in stool")+
+   theme(text = element_text(size=16), legend.position = "none") +
+  #ggtitle("Lung Function")+
+  scale_color_manual(name = "id", values = my_colors_id) +
+  scale_y_log10()
+
+# liver enzymes
+p3 <- metadata_complete%>%
+  filter(!(visit %in% c("6", "8"))) %>% 
+  ggplot(aes(x=visit_wo8, y=GOT)) +
+  theme_minimal() +
+  geom_boxplot(aes(alpha=0.7)) +
+  geom_line(aes(x = visit, group = id, color = id, alpha=0.7), size=3) +
+  geom_point(aes(x = visit, color = id), size=2.5) +
+  ylab("ASAT (U/I) in serum")+
+  xlab("visit_wo8")+
+  theme(text = element_text(size=16), legend.position = "none") +
+  scale_color_manual(name = "id", values = my_colors_id)
+
+p4 <- metadata_complete%>%
+  filter(!(visit %in% c("6", "8"))) %>% 
+  ggplot(aes(x=visit_wo8, y=GPT)) +
+  theme_minimal()+
+  geom_boxplot(aes(alpha=0.7)) +
+  geom_line(aes(x = visit, group = id, color = id, alpha=0.7), size=3) +
+  geom_point(aes(x = visit, color = id), size=2.5) +
+  ylab("ALAT (U/I) in serum")+
+  xlab("visit_wo8")+
   theme(text = element_text(size=16), legend.position = "none") +
   scale_color_manual(name = "id", values = my_colors_id)+
   scale_y_log10()
 
-p3 <- metadata_unique%>%
+# Stool Microbiome
+p5 <- plot_richness(ps_orkambi_stool, x = "visit", measures = c("Shannon")) +
+  theme_minimal()+
+  geom_boxplot(aes(alpha=0.7)) +
+  geom_line(aes(x = visit, group = id, color = id, alpha=0.7), size=3) +
+  geom_point(aes(x = visit, color = id), size=2.5) +
+  scale_colour_manual(values = my_colors_id)+
+  ylab("Shannon Index")+
+  theme(text = element_text(size=16), legend.position = "none",strip.background = element_blank(),  # Remove the gray bar
+        strip.text = element_blank() )+ # Remove the facet labels) 
+  ggtitle("Stool alpha-diversity")
+
+plot_ord_data_st <- ordinate(ps_orkambi_stool_rel, "NMDS", "bray")
+p6 <- plot_ordination(ps_orkambi_stool, plot_ord_data_st)+
+  geom_point(aes(color=id), size = 4.5)+
+  scale_colour_manual(values = my_colors_id) +
+  guides(fill = FALSE, color=FALSE, shape=FALSE)+
+  theme_minimal()+
+  ggtitle("Stool beta-diversity")+
+  theme(text = element_text(size=20), legend.position = "none", legend.text = element_blank())
+
+library(gridExtra)
+# Arrange the ggplot objects in a grid
+grid_arranged <- grid.arrange(
+  p1 + labs(tag = "A") + theme(legend.margin = margin(0, 0, 0, 0), legend.box.spacing = unit(0, units = "pt"), legend.box.margin = margin(0, 0, 0, 0)),
+  p2 + labs(tag = "B"),
+  p3 + labs(tag = "C"),
+  p4 + labs(tag = "D"),
+  p5 + labs(tag = "E"),
+  p6 + labs(tag = "F"),
+  ncol = 6, nrow = 3,
+  #heights = c(1.25, 1.15, 1.25, 1.35),
+  layout_matrix = rbind(c(1, 1, 2, 2),
+                        c(3, 3, 4, 4),
+                        c(5, 5, 6, 6)
+))
+
+# Print or save the arranged plot
+print(grid_arranged)
+
+ggsave(plot=grid_arranged, "~/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/gastro_fig.png",dpi = 600, width = 12, height = 12)
+```
+
+
+# Figure 3 respiratory system
+```{r}
+# ppFEV1
+metadata_complete$pp_fev1
+
+p1 <- metadata_complete %>%
+  filter(pp_fev1 > 5) %>%
+  ggplot(aes(x=visit, y=delta_ppfev1)) +
+  theme_minimal()+
+  geom_boxplot(aes(alpha=0.7)) +
+  geom_line(aes(x = visit, group = id, color = id, alpha=0.7), size=3) +
+  geom_point(aes(x = visit, color = id), size=2.5) +
+  ylab(" Delta ppFEV1 (%) from baseline")+
+   theme(text = element_text(size=16), legend.position = "none") +
+  #ggtitle("Lung Function")+
+  scale_color_manual(name = "id", values = my_colors_id) 
+
+# Inflammation 
+p2 <- metadata_complete%>%
+  filter(visit %in% c("1","2","3","4","5")) %>%
+  ggplot(aes(x=visit, y= il1beta)) +
+  theme_minimal()+
+  geom_boxplot(aes(alpha=0.7)) +
+  geom_line(aes(x = visit, group = id, color = id, alpha=0.7), size=3) +
+  geom_point(aes(x = visit, color = id), size=2.5) +
+  ylab("IL-1ß in sputum (pg/ml)")+
+  theme(text = element_text(size=16), legend.position = "none") +
+  scale_color_manual(name = "id", values = my_colors_id)+
+  scale_y_log10()
+
+p3 <- metadata_complete%>%
   filter(visit %in% c("1","2","3","4","5")) %>%
   ggplot(aes(x=visit, y= il8)) +
-  theme_bw() +
-  geom_boxplot() +
-  geom_line(aes(x = visit, group = id, color = id)) +
+  theme_minimal()+
+  geom_boxplot(aes(alpha=0.7)) +
+  geom_line(aes(x = visit, group = id, color = id, alpha=0.7), size=3) +
   geom_point(aes(x = visit, color = id), size=2.5) +
-  ylab("IL-8 in sputum")+
+  ylab("IL-8 in sputum (pg/ml)")+
   theme(text = element_text(size=16), legend.position = "none") +
   scale_color_manual(name = "id", values = my_colors_id)+
   scale_y_log10()
@@ -963,9 +1118,9 @@ pinf <- ggarrange(p2,p3)
  
 # Microbiome sputum
 p4 <- plot_richness(ps_orkambi_sputum, x = "visit", measures = c("Shannon")) +
-  theme_bw() +
-  geom_boxplot() +
-  geom_line(aes(x = visit, group = id, color = id)) +
+  theme_minimal()+
+  geom_boxplot(aes(alpha=0.7)) +
+  geom_line(aes(x = visit, group = id, color = id, alpha=0.7), size=3) +
   geom_point(aes(x = visit, color = id), size=2.5) +
   scale_colour_manual(values = my_colors_id)+
   ylab("Shannon Index")+
@@ -978,24 +1133,40 @@ p6 <- plot_ordination(ps_full, plot_ord_data_sp)+
     stat_ellipse(geom = "polygon",
                aes(fill = dominant_genus), 
                alpha = 0.15)+  
-  geom_point(aes(color=id, shape=igg_response), size = 2.5)+
+  geom_point(aes(color=id), size = 4)+
   scale_colour_manual(values = my_colors_id) +
   theme(text = element_text(size=20), legend.position = "none", legend.text = element_blank()) +
   guides(fill = FALSE, color=FALSE, shape=FALSE)+
-  theme_bw()+
+  theme_minimal()+
   ggtitle("Sputum beta-diversity")+
   annotate("text", label = "Streptococcus",
     x = -0.2, y = 1.4, size = 6, colour = "red")+
   annotate("text", label = "Staphylococcus",
     x = 1.5, y = 0.5, size = 6, colour = "blue")
 
+
+meta <- as(sample_data(ps_full), "data.frame")
+
+summary(lmerTest::lmer(pp_fev1 ~ dominant_genus +(1|id), data = meta)) # lung function does not depend on dominantGenus
+
+meta %>% 
+  filter(dominant_genus %in% c("Staphylococcus","Streptococcus")) %>% 
+  ggplot(aes(as_factor(dominant_genus), pp_fev1))+
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(aes(color = id), size=2.5) +
+  scale_colour_manual(values = my_colors_id)+
+  ylab("ppfev1")+
+  theme(text = element_text(size=16), legend.position = "none",strip.background = element_blank(),  # Remove the gray bar
+        strip.text = element_blank() )+ # Remove the facet labels) 
+ stat_compare_means(comparisons = list(c("Staphylococcus","Streptococcus")), method = "wilcox.test")
+  
 # Throat Microbiome
 
 p7 <- plot_richness(ps_orkambi_throat, x = "visit", measures = c("Shannon")) +
-  theme_bw() +
-  geom_boxplot() +
-  geom_line(aes(x = visit, group = id, color = id)) +
-  geom_point(aes(x = visit, color = id, shape=igg_response), size=2.5) +
+  theme_minimal()+
+  geom_boxplot(aes(alpha=0.7)) +
+  geom_line(aes(x = visit, group = id, color = id, alpha=0.7), size=3) +
+  geom_point(aes(x = visit, color = id), size=2.5) +
   scale_colour_manual(values = my_colors_id)+
   ylab("Shannon Index")+
   theme(text = element_text(size=16), legend.position = "none",strip.background = element_blank(),  # Remove the gray bar
@@ -1004,14 +1175,14 @@ p7 <- plot_richness(ps_orkambi_throat, x = "visit", measures = c("Shannon")) +
 
 plot_ord_data_th <- ordinate(ps_orkambi_throat_rel, "NMDS", "bray")
 p8 <- plot_ordination(ps_full_throat, plot_ord_data_th)+
-    stat_ellipse(geom = "polygon",
-               aes(fill = dominant_genus), 
-               alpha = 0.15)+  
-  geom_point(aes(color=id, shape=igg_response), size = 2.5)+
+    #stat_ellipse(geom = "polygon",
+               #aes(fill = dominant_genus), 
+               #alpha = 0.15)+  
+  geom_point(aes(color=id), size = 4)+
   scale_colour_manual(values = my_colors_id) +
   theme(text = element_text(size=20), legend.position = "none", legend.text = element_blank()) +
   guides(fill = FALSE, color=FALSE, shape=FALSE)+
-  theme_bw()+
+  theme_minimal()+
   ggtitle("Throat beta-diversity")
 
 library(gridExtra)
@@ -1036,53 +1207,28 @@ print(grid_arranged)
 
 ggsave(plot = grid_arranged,"~/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/resp_fig.png",dpi = 600, width = 12, height = 12)
 
+
+ggplot(metadata_complete, aes(x = visit_wo8, y = ig_g, group = id, color = as.factor(id))) +
+  geom_line() +
+  geom_point() +  # Add points at data points for clarity
+  labs(
+    title = "IgGLevels Over Time",
+    x = "Timepoint",
+    y = "IgG Level",
+    color = "Patient"
+  ) +
+  theme_minimal()
 ```
-```{r correlations}
-
-wilcox.test(metadata_unique$pp_fev1, metadata_unique$lci)
-
+# Some statistics
+```{r Patients characteristics}
 install.packages("lmerTest")
-summary(lmerTest::lmer(ig_g ~ visit + (1|id), data=metadata_unique))
-summary(lmerTest::lmer(leukos ~ visit + (1|id), data=metadata_unique))
-summary(lmerTest::lmer(pp_fev1 ~ visit + (1|id), data=metadata_unique))
-summary(lmerTest::lmer(lci~ visit + (1|id), data=metadata_unique))
-
-metadata_unique%>% 
-  filter(visit=="1") %>% 
-  summarise(
-    Mean = mean(across(as.numeric(sweatchloride_mmol_l))),
-    Median = median(across(as.numeric(sweatchloride_mmol_l))),
-    Minimum = min(across(as.numeric(sweatchloride_mmol_l))),
-    Maximum = max(across(as.numeric(sweatchloride_mmol_l))),
-    StdDev = sd(across(as.numeric(sweatchloride_mmol_l)))
-  )
-
-class(metadata_unique$sweatchloride_mmol_l)
-
-metadata_unique %>% 
-  filter(visit=="1")%>%
-  summarise(Mean=mean(sweatchloride_mmol_l), Max=max(sweatchloride_mmol_l), Min=min(sweatchloride_mmol_l), Median=median(sweatchloride_mmol_l), Std=sd(sweatchloride_mmol_l))
-
-metadata_unique%>%
-  filter(visit %in% c("1","2","3","4","5","7","9")) %>%
-  ggplot(aes(x=visit, y=leukos )) +
-  theme_bw() +
-  geom_boxplot() +
-  geom_line(aes(x = visit, group = id, color = id)) +
-  geom_point(aes(x = visit, color = id, shape=igg_response), size=3) +
-  ylab("IG-G")+
-  theme(text = element_text(size=16), legend.position = "none") +
-  scale_color_manual(name = "id", values = my_colors_id)+
-  scale_y_log10()
-
-summary(metadata_unique$sweatchloride_mmol_l)
+summary(lmerTest::lmer(ig_g ~ visit + (1|id), data=metadata_complete))
+summary(lmerTest::lmer(leukos ~ visit + (1|id), data=metadata_complete))
+summary(lmerTest::lmer(pp_fev1 ~ visit + (1|id), data=metadata_complete))
+summary(lmerTest::lmer(lci~ visit + (1|id), data=metadata_complete))
 ```
-
-
 
 ```{r session info}
 
 sessionInfo()
-
 ```
-

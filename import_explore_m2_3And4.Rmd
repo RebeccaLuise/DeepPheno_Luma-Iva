@@ -1,0 +1,1205 @@
+---
+title: "Serum metabolomic analysis of the OrkambiKIDS study - reduced feature space: only metabolites which have ms2: 3 and 4 annottaion (better quality)"
+author: "Rebecca Luise Knoll"
+date: " last edit `r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+    code_folding: show
+    number_sections: yes
+    smart: no
+    toc: yes
+    df_print: paged
+    toc_float: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+```
+
+```{r import data and packages, include=FALSE}
+#setwd("/Users/rebecca/Documents/Forschung/Orkambi_Kids/Metabolomics/R_data_analysis")
+#renv::activate()
+library(pacman)
+
+pacman::p_load(tidyverse, phyloseq, magrittr, janitor, microbiome, knitr, lubridate, naniar, stringr, ggpubr)
+
+HILIC_neg_phenotype <- readxl::read_excel("/Users/rebecca/Documents/Forschung/Orkambi_Kids/Metabolomics/R_data_analysis/excel_tables/220804_M181_01_HILIC_neg.xlsx", sheet="phenotypeData")
+HILIC_neg_feature <- readxl::read_excel("/Users/rebecca/Documents/Forschung/Orkambi_Kids/Metabolomics/R_data_analysis/excel_tables/220804_M181_01_HILIC_neg.xlsx", sheet="featureData")
+HILIC_neg_intensity <- readxl::read_excel("/Users/rebecca/Documents/Forschung/Orkambi_Kids/Metabolomics/R_data_analysis/excel_tables/220804_M181_01_HILIC_neg.xlsx", sheet="Intensity")
+
+RP_neg_phenotype <- readxl::read_excel("/Users/rebecca/Documents/Forschung/Orkambi_Kids/Metabolomics/R_data_analysis/excel_tables/220804_M181_01_RP_neg.xlsx", sheet="phenotypeData")
+RP_neg_feature <- readxl::read_excel("/Users/rebecca/Documents/Forschung/Orkambi_Kids/Metabolomics/R_data_analysis/excel_tables/220804_M181_01_RP_neg.xlsx", sheet="featureData")
+RP_neg_intensity <- readxl::read_excel("/Users/rebecca/Documents/Forschung/Orkambi_Kids/Metabolomics/R_data_analysis/excel_tables/220804_M181_01_RP_neg.xlsx", sheet="Intensity")
+
+HILIC_pos_phenotype <- readxl::read_excel("/Users/rebecca/Documents/Forschung/Orkambi_Kids/Metabolomics/R_data_analysis/excel_tables/220804_M181_01_HILIC_pos.xlsx", sheet="phenotypeData")
+HILIC_pos_feature <- readxl::read_excel("/Users/rebecca/Documents/Forschung/Orkambi_Kids/Metabolomics/R_data_analysis/excel_tables/220804_M181_01_HILIC_pos.xlsx", sheet="featureData")
+HILIC_pos_intensity <- readxl::read_excel("/Users/rebecca/Documents/Forschung/Orkambi_Kids/Metabolomics/R_data_analysis/excel_tables/220804_M181_01_HILIC_pos.xlsx", sheet="Intensity")
+
+RP_pos_phenotype <- readxl::read_excel("/Users/rebecca/Documents/Forschung/Orkambi_Kids/Metabolomics/R_data_analysis/excel_tables/220804_M181_01_RP_pos_qcvr.xlsx", sheet="phenotypeData")
+RP_pos_feature<- readxl::read_excel("/Users/rebecca/Documents/Forschung/Orkambi_Kids/Metabolomics/R_data_analysis/excel_tables/220804_M181_01_RP_pos_qcvr.xlsx", sheet="featureData")
+RP_pos_intensity<- readxl::read_excel("/Users/rebecca/Documents/Forschung/Orkambi_Kids/Metabolomics/R_data_analysis/excel_tables/220804_M181_01_RP_pos_qcvr.xlsx", sheet="Intensity")
+```
+
+
+```{r clean tables and reduce feature space, include=FALSE}
+
+#Chen and Karin suggested to filter for ms2 annotation of 3&4 -> considered as "core" metabolites
+
+HILIC_neg_phenotype <- clean_names(HILIC_neg_phenotype)
+colnames(HILIC_neg_phenotype) <- lapply(colnames(HILIC_neg_phenotype), gsub, pattern="general_all_", replacement="")
+
+HILIC_neg_phenotype <- HILIC_neg_phenotype%>%
+  mutate(visit_wo6 = case_when(visit == "6"~"7", TRUE~visit)) 
+
+HILIC_neg_feature <- clean_names(HILIC_neg_feature)
+HILIC_neg_feature_red <- HILIC_neg_feature %>%
+  filter(general_all_annot_ms2==3 | general_all_annot_ms2==4) 
+# has 62 metabolites
+HILIC_neg_feature_red_list <- c(HILIC_neg_feature_red$general_all_id)
+HILIC_neg_intensity<- clean_names(HILIC_neg_intensity)
+HILIC_neg_intensity_red <- HILIC_neg_intensity[HILIC_neg_intensity$id %in% c(HILIC_neg_feature_red_list),]
+
+HILIC_pos_phenotype <- clean_names(HILIC_pos_phenotype)
+colnames(HILIC_pos_phenotype) <- lapply(colnames(HILIC_pos_phenotype), gsub, pattern="general_all_", replacement="")
+HILIC_pos_phenotype <- HILIC_pos_phenotype%>%
+  mutate(visit_wo6 = case_when(visit == "6"~"7", TRUE~visit)) # there is one patient who is the only with a V6 measure - move this to V7 to make it easier to compare. 
+
+HILIC_pos_feature <- clean_names(HILIC_pos_feature)
+HILIC_pos_feature_red <- HILIC_pos_feature %>%
+  filter(general_all_annot_ms2==3 | general_all_annot_ms2==4)
+#has 86 features
+HILIC_pos_feature_red_list <- c(HILIC_pos_feature_red$general_all_id)
+HILIC_pos_intensity<- clean_names(HILIC_pos_intensity)
+HILIC_pos_intensity_red <- HILIC_pos_intensity[HILIC_pos_intensity$id %in% c(HILIC_pos_feature_red_list),]
+
+RP_neg_phenotype <- clean_names(RP_neg_phenotype)
+colnames(RP_neg_phenotype) <- lapply(colnames(RP_neg_phenotype), gsub, pattern="general_all_", replacement="")
+RP_neg_phenotype <- RP_neg_phenotype%>%
+  mutate(visit_wo6 = case_when(visit == "6"~"7", TRUE~visit)) # there is one patient who is the only with a V8 measure - move this to V9 to make it easier to compare. 
+RP_neg_feature <- clean_names(RP_neg_feature)
+RP_neg_feature_red <- RP_neg_feature %>%
+  filter(general_all_annot_ms2==3 | general_all_annot_ms2==4)
+#has 57 metabolites
+RP_neg_feature_red_list <- c(RP_neg_feature_red$general_all_id)
+RP_neg_intensity<- clean_names(RP_neg_intensity)
+RP_neg_intensity_red <- RP_neg_intensity[RP_neg_intensity$id %in% c(RP_neg_feature_red_list),]
+
+RP_pos_phenotype <- clean_names(RP_pos_phenotype)
+colnames(RP_pos_phenotype) <- lapply(colnames(RP_pos_phenotype), gsub, pattern="general_all_", replacement="")
+RP_pos_phenotype <- RP_pos_phenotype %>%
+  mutate(visit_wo6 = case_when(visit == "6"~"7", TRUE~visit)) # there is one patient who is the only with a V8 measure - move this to V9 to make it easier to compare. 
+
+RP_pos_feature <- clean_names(RP_pos_feature)
+RP_pos_feature_red <- RP_pos_feature %>%
+  filter(general_all_annot_ms2==3 | general_all_annot_ms2==4)
+#has 90 metabolites
+RP_pos_feature_red_list <- c(RP_pos_feature_red$general_all_id)
+RP_pos_intensity<- clean_names(RP_pos_intensity)
+RP_pos_intensity_red <- RP_pos_intensity[RP_pos_intensity$id %in% c(RP_pos_feature_red_list),]
+
+```
+# Multivariate analysis: Prinicpal component analysis
+## HILIC negative
+```{r PCA HILIC negative}
+#calculate principal components
+
+HILIC_neg_intensity_red_t <- as.data.frame(t(HILIC_neg_intensity_red))
+#rownames(table_decontam_df) <- table_decontam_df$...1
+colnames(HILIC_neg_intensity_red_t) <- HILIC_neg_intensity_red_t[1,]
+HILIC_neg_intensity_red_t <- HILIC_neg_intensity_red_t[-1, ]
+HILIC_neg_intensity_red_t <- HILIC_neg_intensity_red_t%>% mutate_if(is.character, as.numeric)
+
+features <- as.data.frame(HILIC_neg_intensity_red_t)
+features <- features[ , which(apply(features, 2, var) != 0)]
+#features.scaled <- data.frame(apply(features, 2, scale))
+res.pca <- prcomp(na.omit(features),  scale = TRUE)
+
+res.pca$rotation <- -1*res.pca$rotation
+res.pca$x <- -1*res.pca$x
+biplot(res.pca)
+
+PCA_contrib.1_HILIC_neg <- res.pca %>%
+  broom::tidy(matrix = "variables") %>%
+  dplyr::filter(PC == "1") %>%
+  slice_max(n=50, order_by = abs(value))
+
+PCA_contrib.1_HILIC_neg %>%
+  mutate(column=fct_reorder(column, value)) %>%
+  ggplot(aes(x=value, y=column)) +
+  geom_segment(aes(x=value, xend=0, y=column, yend=column), color="black") +
+  geom_point(aes(size=3, color=value)) +
+  scale_color_gradient2 (low = "#0C4C00", high = "#65014B", mid = "white", midpoint = 0) +
+  theme_bw() +
+  theme(legend.position = "none")+
+  geom_vline(xintercept = 0, linetype = 2, color="grey40") +
+  scale_x_continuous(labels = scales::percent, limits = c(-0.30, 0.30), breaks = seq(-0.3,0.30, by = 0.10)) +
+  xlab("Contribution to PC1") +
+  ylab("") -> p1.con
+
+p1.con
+
+PCA_contrib.2_HILIC_neg <- res.pca %>%
+  broom::tidy(matrix = "variables") %>%
+  dplyr::filter(PC == "2") %>%
+  slice_max(n=50, order_by = abs(value))
+
+PCA_contrib.2_HILIC_neg %>%
+  mutate(column=fct_reorder(column, value)) %>%
+  ggplot(aes(x=value, y=column)) +
+  geom_segment(aes(x=value, xend=0, y=column, yend=column), color="black") +
+  geom_point(aes(size=3, color=value)) +
+  scale_color_gradient2 (low = "#0C4C00", high = "#65014B", mid = "white", midpoint = 0) +
+  theme_bw() +
+  theme(legend.position = "none")+
+  geom_vline(xintercept = 0, linetype = 2, color="grey40") +
+  scale_x_continuous(labels = scales::percent, limits = c(-0.30, 0.30), breaks = seq(-0.3,0.30, by = 0.10)) +
+  xlab("Contribution to PC2") +
+  ylab("") -> p2.con
+
+p2.con
+
+#install.packages("factoextra")
+library(factoextra)
+
+fviz_eig(res.pca)
+
+fviz_pca_ind(res.pca,
+             col.ind = "cos2", # Color by the quality of representation
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             )
+
+fviz_pca_var(res.pca,
+             col.var = "contrib", # Color by contributions to the PC
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             )
+
+fviz_pca_biplot(res.pca, repel = TRUE,
+                col.var = "#2E9FDF", # Variables color
+                col.ind = "#696969"  # Individuals color
+                )
+
+
+# Eigenvalues
+eig.val <- get_eigenvalue(res.pca)
+#eig.val
+  
+# Results for Variables
+res.var <- get_pca_var(res.pca)
+#res.var$coord          # Coordinates
+#res.var$contrib        # Contributions to the PCs
+#res.var$cos2           # Quality of representation 
+# Results for individuals
+res.ind <- get_pca_ind(res.pca)
+#res.ind$coord          # Coordinates
+#res.ind$contrib        # Contributions to the PCs
+#res.ind$cos2           # Quality of representation 
+
+fviz_pca_ind(res.pca, repel = TRUE)
+groups <- as.factor(HILIC_neg_phenotype$visit_wo6)
+library(RColorBrewer)
+fviz_pca_ind(res.pca,
+             col.ind = groups, # color by groups
+             palette = c(brewer.pal(9, "Set1")),
+             addEllipses = TRUE, # Concentration ellipses
+             ellipse.type = "confidence",
+             legend.title = "Groups",
+             repel = FALSE
+             )
+
+#Calculate the coordinates for the levels of grouping variables. The coordinates for a given group is calculated as the mean coordinates of the individuals in the group.
+
+library(magrittr) # for pipe %>%
+library(dplyr)   # everything else
+# 1. Individual coordinates
+res.ind <- get_pca_ind(res.pca)
+# 2. Coordinate of groups
+coord.groups <- res.ind$coord %>%
+  as_data_frame() %>%
+  select(Dim.1, Dim.2) %>%
+  mutate(visit_wo6 = groups) %>%
+  group_by(visit_wo6) %>%
+  summarise(
+    Dim.1 = mean(Dim.1),
+    Dim.2 = mean(Dim.2)
+    )
+coord.groups
+```
+
+## HILIC positive
+```{r PCA HILIC positive}
+#calculate principal components
+
+HILIC_pos_intensity_t <- as.data.frame(t(HILIC_pos_intensity))
+#rownames(table_decontam_df) <- table_decontam_df$...1
+colnames(HILIC_pos_intensity_t) <- HILIC_pos_intensity_t[1,]
+HILIC_pos_intensity_t <- HILIC_pos_intensity_t[-1, ]
+HILIC_pos_intensity_t <- HILIC_pos_intensity_t%>% mutate_if(is.character, as.numeric)
+
+features <- as.data.frame(HILIC_pos_intensity_t)
+features <- features[ , which(apply(features, 2, var) != 0)]
+#features.scaled <- data.frame(apply(features, 2, scale))
+res.pca <- prcomp(na.omit(features),  scale = TRUE)
+
+res.pca$rotation <- -1*res.pca$rotation
+res.pca$x <- -1*res.pca$x
+biplot(res.pca)
+
+PCA_contrib.1_HILIC_pos <- res.pca %>%
+  broom::tidy(matrix = "variables") %>%
+  dplyr::filter(PC == "1") %>%
+  slice_max(n=50, order_by = abs(value))
+
+PCA_contrib.1_HILIC_pos %>%
+  mutate(column=fct_reorder(column, value)) %>%
+  ggplot(aes(x=value, y=column)) +
+  geom_segment(aes(x=value, xend=0, y=column, yend=column), color="black") +
+  geom_point(aes(size=3, color=value)) +
+  scale_color_gradient2 (low = "#0C4C00", high = "#65014B", mid = "white", midpoint = 0) +
+  theme_bw() +
+  theme(legend.position = "none")+
+  geom_vline(xintercept = 0, linetype = 2, color="grey40") +
+  scale_x_continuous(labels = scales::percent, limits = c(-0.30, 0.30), breaks = seq(-0.3,0.30, by = 0.10)) +
+  xlab("Contribution to PC1") +
+  ylab("") -> p1.con
+
+p1.con
+
+PCA_contrib.2_HILIC_pos <- res.pca %>%
+  broom::tidy(matrix = "variables") %>%
+  dplyr::filter(PC == "2") %>%
+  slice_max(n=50, order_by = abs(value))
+
+PCA_contrib.2_HILIC_pos %>%
+  mutate(column=fct_reorder(column, value)) %>%
+  ggplot(aes(x=value, y=column)) +
+  geom_segment(aes(x=value, xend=0, y=column, yend=column), color="black") +
+  geom_point(aes(size=3, color=value)) +
+  scale_color_gradient2 (low = "#0C4C00", high = "#65014B", mid = "white", midpoint = 0) +
+  theme_bw() +
+  theme(legend.position = "none")+
+  geom_vline(xintercept = 0, linetype = 2, color="grey40") +
+  scale_x_continuous(labels = scales::percent, limits = c(-0.30, 0.30), breaks = seq(-0.3,0.30, by = 0.10)) +
+  xlab("Contribution to PC2") +
+  ylab("") -> p2.con
+
+p2.con
+
+library(factoextra)
+
+fviz_eig(res.pca)
+
+fviz_pca_ind(res.pca,
+             col.ind = "cos2", # Color by the quality of representation
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             )
+
+fviz_pca_var(res.pca,
+             col.var = "contrib", # Color by contributions to the PC
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             )
+
+fviz_pca_biplot(res.pca, repel = TRUE,
+                col.var = "#2E9FDF", # Variables color
+                col.ind = "#696969"  # Individuals color
+                )
+
+
+# Eigenvalues
+eig.val <- get_eigenvalue(res.pca)
+#eig.val
+  
+# Results for Variables
+res.var <- get_pca_var(res.pca)
+#res.var$coord          # Coordinates
+#res.var$contrib        # Contributions to the PCs
+#res.var$cos2           # Quality of representation 
+# Results for individuals
+res.ind <- get_pca_ind(res.pca)
+#res.ind$coord          # Coordinates
+#res.ind$contrib        # Contributions to the PCs
+#res.ind$cos2           # Quality of representation 
+
+fviz_pca_ind(res.pca, repel = TRUE)
+groups <- as.factor(HILIC_pos_phenotype$visit_wo6)
+library(RColorBrewer)
+fviz_pca_ind(res.pca,
+             col.ind = groups, # color by groups
+             palette = c(brewer.pal(9, "Set1")),
+             addEllipses = TRUE, # Concentration ellipses
+             ellipse.type = "confidence",
+             legend.title = "Groups",
+             repel = FALSE
+             )
+
+#Calculate the coordinates for the levels of grouping variables. The coordinates for a given group is calculated as the mean coordinates of the individuals in the group.
+
+library(magrittr) # for pipe %>%
+library(dplyr)   # everything else
+# 1. Individual coordinates
+res.ind <- get_pca_ind(res.pca)
+# 2. Coordinate of groups
+coord.groups <- res.ind$coord %>%
+  as_data_frame() %>%
+  select(Dim.1, Dim.2) %>%
+  mutate(visit_wo6 = groups) %>%
+  group_by(visit_wo6) %>%
+  summarise(
+    Dim.1 = mean(Dim.1),
+    Dim.2 = mean(Dim.2)
+    )
+coord.groups
+```
+
+## RP negative
+```{r PCA RP negative}
+#calculate principal components
+
+RP_neg_intensity_red_t <- as.data.frame(t(RP_neg_intensity_red))
+#rownames(table_decontam_df) <- table_decontam_df$...1
+colnames(RP_neg_intensity_red_t) <- RP_neg_intensity_red_t[1,]
+RP_neg_intensity_red_t <- RP_neg_intensity_red_t[-1, ]
+RP_neg_intensity_red_t <- RP_neg_intensity_red_t%>% mutate_if(is.character, as.numeric)
+
+features <- as.data.frame(RP_neg_intensity_red_t)
+features <- features[ , which(apply(features, 2, var) != 0)]
+#features.scaled <- data.frame(apply(features, 2, scale))
+res.pca <- prcomp(na.omit(features),  scale = TRUE)
+
+res.pca$rotation <- -1*res.pca$rotation
+res.pca$x <- -1*res.pca$x
+biplot(res.pca)
+
+PCA_contrib.1_RP_neg <- res.pca %>%
+  broom::tidy(matrix = "variables") %>%
+  dplyr::filter(PC == "1") %>%
+  slice_max(n=50, order_by = abs(value))
+
+PCA_contrib.1_RP_neg %>%
+  mutate(column=fct_reorder(column, value)) %>%
+  ggplot(aes(x=value, y=column)) +
+  geom_segment(aes(x=value, xend=0, y=column, yend=column), color="black") +
+  geom_point(aes(size=3, color=value)) +
+  scale_color_gradient2 (low = "#0C4C00", high = "#65014B", mid = "white", midpoint = 0) +
+  theme_bw() +
+  geom_vline(xintercept = 0, linetype = 2, color="grey40") +
+  scale_x_continuous(labels = scales::percent, limits = c(-0.30, 0.30), breaks = seq(-0.3,0.30, by = 0.10)) +
+  xlab("Contribution to PC1") +
+  ylab("") -> p1.con
+
+p1.con
+
+PCA_contrib.2_RP_neg <- res.pca %>%
+  broom::tidy(matrix = "variables") %>%
+  dplyr::filter(PC == "2") %>%
+  slice_max(n=50, order_by = abs(value))
+
+PCA_contrib.2_RP_neg %>%
+  mutate(column=fct_reorder(column, value)) %>%
+  ggplot(aes(x=value, y=column)) +
+  geom_segment(aes(x=value, xend=0, y=column, yend=column), color="black") +
+  geom_point(aes(size=3, color=value)) +
+  scale_color_gradient2 (low = "#0C4C00", high = "#65014B", mid = "white", midpoint = 0) +
+  theme_bw() +
+  geom_vline(xintercept = 0, linetype = 2, color="grey40") +
+  scale_x_continuous(labels = scales::percent, limits = c(-0.30, 0.30), breaks = seq(-0.3,0.30, by = 0.10)) +
+  xlab("Contribution to PC2") +
+  ylab("") -> p2.con
+
+p2.con
+
+library(factoextra)
+
+fviz_eig(res.pca)
+
+fviz_pca_ind(res.pca,
+             col.ind = "cos2", # Color by the quality of representation
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             )
+
+fviz_pca_var(res.pca,
+             col.var = "contrib", # Color by contributions to the PC
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             )
+
+fviz_pca_biplot(res.pca, repel = TRUE,
+                col.var = "#2E9FDF", # Variables color
+                col.ind = "#696969"  # Individuals color
+                )
+
+
+# Eigenvalues
+eig.val <- get_eigenvalue(res.pca)
+#eig.val
+  
+# Results for Variables
+res.var <- get_pca_var(res.pca)
+#res.var$coord          # Coordinates
+#res.var$contrib        # Contributions to the PCs
+#res.var$cos2           # Quality of representation 
+# Results for individuals
+res.ind <- get_pca_ind(res.pca)
+#res.ind$coord          # Coordinates
+#res.ind$contrib        # Contributions to the PCs
+#res.ind$cos2           # Quality of representation 
+
+fviz_pca_ind(res.pca, repel = TRUE)
+groups <- as.factor(RP_neg_phenotype$visit_wo6)
+library(RColorBrewer)
+fviz_pca_ind(res.pca,
+             col.ind = groups, # color by groups
+             palette = c(brewer.pal(9, "Set1")),
+             addEllipses = TRUE, # Concentration ellipses
+             ellipse.type = "confidence",
+             legend.title = "Groups",
+             repel = FALSE
+             )
+
+#Calculate the coordinates for the levels of grouping variables. The coordinates for a given group is calculated as the mean coordinates of the individuals in the group.
+
+library(magrittr) # for pipe %>%
+library(dplyr)   # everything else
+# 1. Individual coordinates
+res.ind <- get_pca_ind(res.pca)
+# 2. Coordinate of groups
+coord.groups <- res.ind$coord %>%
+  as_data_frame() %>%
+  select(Dim.1, Dim.2) %>%
+  mutate(visit_wo6 = groups) %>%
+  group_by(visit_wo6) %>%
+  summarise(
+    Dim.1 = mean(Dim.1),
+    Dim.2 = mean(Dim.2)
+    )
+coord.groups
+```
+## RP positive
+```{r PCA RP positive}
+#calculate principal components
+
+RP_pos_intensity_red_t <- as.data.frame(t(RP_pos_intensity_red))
+#rownames(table_decontam_df) <- table_decontam_df$...1
+colnames(RP_pos_intensity_red_t) <- RP_pos_intensity_red_t[1,]
+RP_pos_intensity_red_t <- RP_pos_intensity_red_t[-1, ]
+RP_pos_intensity_red_t <- RP_pos_intensity_red_t%>% mutate_if(is.character, as.numeric)
+
+features <- as.data.frame(RP_pos_intensity_red_t)
+features <- features[ , which(apply(features, 2, var) != 0)]
+#features.scaled <- data.frame(apply(features, 2, scale))
+res.pca <- prcomp(na.omit(features),  scale = TRUE)
+
+res.pca$rotation <- -1*res.pca$rotation
+res.pca$x <- -1*res.pca$x
+biplot(res.pca)
+
+PCA_contrib.1_RP_pos <- res.pca %>%
+  broom::tidy(matrix = "variables") %>%
+  dplyr::filter(PC == "1") %>%
+  slice_max(n=50, order_by = abs(value))
+
+PCA_contrib.1_RP_pos %>%
+  mutate(column=fct_reorder(column, value)) %>%
+  ggplot(aes(x=value, y=column)) +
+  geom_segment(aes(x=value, xend=0, y=column, yend=column), color="black") +
+  geom_point(aes(size=3, color=value)) +
+  scale_color_gradient2 (low = "#0C4C00", high = "#65014B", mid = "white", midpoint = 0) +
+  theme_bw() +
+  theme(legend.position = "none")+
+  geom_vline(xintercept = 0, linetype = 2, color="grey40") +
+  scale_x_continuous(labels = scales::percent, limits = c(-0.30, 0.30), breaks = seq(-0.3,0.30, by = 0.10)) +
+  xlab("Contribution to PC1") +
+  ylab("") -> p1.con
+
+p1.con
+
+PCA_contrib.2_RP_pos <- res.pca %>%
+  broom::tidy(matrix = "variables") %>%
+  dplyr::filter(PC == "2") %>%
+  slice_max(n=50, order_by = abs(value))
+
+PCA_contrib.2_RP_pos %>%
+  mutate(column=fct_reorder(column, value)) %>%
+  ggplot(aes(x=value, y=column)) +
+  geom_segment(aes(x=value, xend=0, y=column, yend=column), color="black") +
+  geom_point(aes(size=3, color=value)) +
+  scale_color_gradient2 (low = "#0C4C00", high = "#65014B", mid = "white", midpoint = 0) +
+  theme_bw() +
+  theme(legend.position = "none")+
+  geom_vline(xintercept = 0, linetype = 2, color="grey40") +
+  scale_x_continuous(labels = scales::percent, limits = c(-0.30, 0.30), breaks = seq(-0.3,0.30, by = 0.10)) +
+  xlab("Contribution to PC2") +
+  ylab("") -> p2.con
+
+p2.con
+
+library(factoextra)
+
+fviz_eig(res.pca)
+
+fviz_pca_ind(res.pca,
+             col.ind = "cos2", # Color by the quality of representation
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             )
+
+fviz_pca_var(res.pca,
+             col.var = "contrib", # Color by contributions to the PC
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             )
+
+fviz_pca_biplot(res.pca, repel = TRUE,
+                col.var = "#2E9FDF", # Variables color
+                col.ind = "#696969"  # Individuals color
+                )
+
+
+# Eigenvalues
+eig.val <- get_eigenvalue(res.pca)
+#eig.val
+  
+# Results for Variables
+res.var <- get_pca_var(res.pca)
+#res.var$coord          # Coordinates
+#res.var$contrib        # Contributions to the PCs
+#res.var$cos2           # Quality of representation 
+# Results for individuals
+res.ind <- get_pca_ind(res.pca)
+#res.ind$coord          # Coordinates
+#res.ind$contrib        # Contributions to the PCs
+#res.ind$cos2           # Quality of representation 
+
+fviz_pca_ind(res.pca, repel = TRUE)
+groups <- as.factor(RP_pos_phenotype$visit_wo6)
+library(RColorBrewer)
+fviz_pca_ind(res.pca,
+             col.ind = groups, # color by groups
+             palette = c(brewer.pal(9, "Set1")),
+             addEllipses = TRUE, # Concentration ellipses
+             ellipse.type = "confidence",
+             legend.title = "Groups",
+             repel = FALSE
+             )
+
+#Calculate the coordinates for the levels of grouping variables. The coordinates for a given group is calculated as the mean coordinates of the individuals in the group.
+
+library(magrittr) # for pipe %>%
+library(dplyr)   # everything else
+# 1. Individual coordinates
+res.ind <- get_pca_ind(res.pca)
+# 2. Coordinate of groups
+coord.groups <- res.ind$coord %>%
+  as_data_frame() %>%
+  select(Dim.1, Dim.2) %>%
+  mutate(visit_wo6 = groups) %>%
+  group_by(visit_wo6) %>%
+  summarise(
+    Dim.1 = mean(Dim.1),
+    Dim.2 = mean(Dim.2)
+    )
+coord.groups
+```
+
+# PERMANOVA
+
+## create phyloseq object
+```{r create phyloseq objects, include=FALSE}
+
+# HILIC_neg
+
+# sample_metadata
+HILIC_neg_phenotype -> metadata
+metadata <- as.data.frame(metadata)
+metadata$file <- tolower(metadata$file)
+rownames(metadata) <- metadata$file
+metadata$file <- NULL
+#sample_metadata_df <- metadata[rownames(metadata)%in%colnames(otu_species), ]
+sample_metadata <- sample_data(metadata)
+sample_metadata <- sample_metadata[gtools::mixedsort(rownames(metadata)),]
+
+# otu table
+HILIC_neg_intensity_red -> otu # metabolite intensities
+otu <- as.data.frame(otu)
+rownames(otu) <- otu$id
+otu$id <- NULL
+
+# tax table
+HILIC_neg_feature_red -> tax # those are the assigned metabolites
+tax <- tax %>% select(general_all_id, general_all_annot_ms1, general_all_annot_ms2)
+tax_fil <- tax[tax$general_all_id%in% rownames(otu), ]
+
+# otu table second step
+otu_fil <- otu[rownames(otu)%in%tax_fil$general_all_id, ]
+otu_metabolites <- otu_table(otu_fil, taxa_are_rows = TRUE)
+otu_metabolites<- otu_metabolites[, gtools::mixedsort(colnames(otu_fil))]
+
+# tax table second step (set rownames before transposing to dataframe, otherwise it won't work)
+tax_fil <- as.data.frame(tax_fil)
+rownames(tax_fil) <- tax_fil$general_all_id
+tax_fil$general_all_id <- NULL
+tax <- tax_table(as.matrix(tax_fil))
+
+# Confirm IDs
+all(sample_names(sample_metadata) == sample_names(otu_metabolites)) #same to merge
+
+# phyloseq
+
+ps_HILIC_neg <- merge_phyloseq(otu_metabolites, sample_metadata, tax)
+
+# HILIC_pos
+
+# sample_metadata
+HILIC_pos_phenotype -> metadata
+metadata <- as.data.frame(metadata)
+metadata$file <- tolower(metadata$file)
+rownames(metadata) <- metadata$file
+metadata$file <- NULL
+#sample_metadata_df <- metadata[rownames(metadata)%in%colnames(otu_species), ]
+sample_metadata <- sample_data(metadata)
+sample_metadata <- sample_metadata[gtools::mixedsort(rownames(metadata)),]
+
+# otu table
+HILIC_pos_intensity_red -> otu # metabolite intensities
+otu <- as.data.frame(otu)
+rownames(otu) <- otu$id
+otu$id <- NULL
+
+# tax table
+HILIC_pos_feature_red -> tax # those are the assigned metabolites
+tax <- tax %>% select(general_all_id, general_all_annot_ms1, general_all_annot_ms2)
+tax_fil <- tax[tax$general_all_id%in% rownames(otu), ]
+
+# otu table second step
+otu_fil <- otu[rownames(otu)%in%tax_fil$general_all_id, ]
+otu_metabolites <- otu_table(otu_fil, taxa_are_rows = TRUE)
+otu_metabolites<- otu_metabolites[, gtools::mixedsort(colnames(otu_fil))]
+
+# tax table second step (set rownames before transposing to dataframe, otherwise it won't work)
+tax_fil <- as.data.frame(tax_fil)
+rownames(tax_fil) <- tax_fil$general_all_id
+tax_fil$general_all_id <- NULL
+tax <- tax_table(as.matrix(tax_fil))
+
+# Confirm IDs
+all(sample_names(sample_metadata) == sample_names(otu_metabolites)) #same to merge
+
+# phyloseq
+
+ps_HILIC_pos <- merge_phyloseq(otu_metabolites, sample_metadata, tax)
+
+# RP_neg
+
+# sample_metadata
+RP_neg_phenotype -> metadata
+metadata <- as.data.frame(metadata)
+metadata$file <- tolower(metadata$file)
+rownames(metadata) <- metadata$file
+metadata$file <- NULL
+#sample_metadata_df <- metadata[rownames(metadata)%in%colnames(otu_species), ]
+sample_metadata <- sample_data(metadata)
+sample_metadata <- sample_metadata[gtools::mixedsort(rownames(metadata)),]
+
+# otu table
+RP_neg_intensity_red -> otu # metabolite intensities
+otu <- as.data.frame(otu)
+rownames(otu) <- otu$id
+otu$id <- NULL
+
+# tax table
+RP_neg_feature_red -> tax # those are the assigned metabolites
+tax <- tax %>% select(general_all_id, general_all_annot_ms1, general_all_annot_ms2)
+tax_fil <- tax[tax$general_all_id%in% rownames(otu), ]
+
+# otu table second step
+otu_fil <- otu[rownames(otu)%in%tax_fil$general_all_id, ]
+otu_metabolites <- otu_table(otu_fil, taxa_are_rows = TRUE)
+otu_metabolites<- otu_metabolites[, gtools::mixedsort(colnames(otu_fil))]
+
+# tax table second step (set rownames before transposing to dataframe, otherwise it won't work)
+tax_fil <- as.data.frame(tax_fil)
+rownames(tax_fil) <- tax_fil$general_all_id
+tax_fil$general_all_id <- NULL
+tax <- tax_table(as.matrix(tax_fil))
+
+# Confirm IDs
+all(sample_names(sample_metadata) == sample_names(otu_metabolites)) #same to merge
+
+# phyloseq
+
+ps_RP_neg <- merge_phyloseq(otu_metabolites, sample_metadata, tax)
+
+# RP_pos
+
+# sample_metadata
+RP_pos_phenotype -> metadata
+metadata <- as.data.frame(metadata)
+metadata$file <- tolower(metadata$file)
+rownames(metadata) <- metadata$file
+metadata$file <- NULL
+#sample_metadata_df <- metadata[rownames(metadata)%in%colnames(otu_species), ]
+sample_metadata <- sample_data(metadata)
+sample_metadata <- sample_metadata[gtools::mixedsort(rownames(metadata)),]
+
+# otu table
+RP_pos_intensity_red -> otu # metabolite intensities
+otu <- as.data.frame(otu)
+rownames(otu) <- otu$id
+otu$id <- NULL
+
+# tax table
+RP_pos_feature_red -> tax # those are the assigned metabolites
+tax <- tax %>% select(general_all_id, general_all_annot_ms1, general_all_annot_ms2)
+tax_fil <- tax[tax$general_all_id%in% rownames(otu), ]
+
+# otu_table second step
+otu_fil <- otu[rownames(otu)%in%tax_fil$general_all_id, ]
+otu_metabolites <- otu_table(otu_fil, taxa_are_rows = TRUE)
+otu_metabolites<- otu_metabolites[, gtools::mixedsort(colnames(otu_fil))]
+
+# tax table second step (set rownames before transposing to dataframe, otherwise it won't work)
+tax_fil <- as.data.frame(tax_fil)
+rownames(tax_fil) <- tax_fil$general_all_id
+tax_fil$general_all_id <- NULL
+tax <- tax_table(as.matrix(tax_fil))
+
+# Confirm IDs
+all(sample_names(sample_metadata) == sample_names(otu_metabolites)) #same to merge
+
+# phyloseq
+
+ps_RP_pos <- merge_phyloseq(otu_metabolites, sample_metadata, tax)
+
+```
+
+## HILIC negative
+
+```{r permanova HILIC_neg}
+# PERMANOVA data preparation
+
+set.seed(123)
+
+# calculate BC_distance
+BC_dist <- phyloseq::distance(ps_HILIC_neg, method="bray", weighted=T, na.rm=T)
+
+#extract metadata
+metadata<- as(sample_data(ps_HILIC_neg),"data.frame")
+
+vegan::adonis2(BC_dist ~ visit_wo6 + id,
+              permutations = 999, na.action=na.exclude, data = metadata, by="margin")
+
+vegan::adonis2(BC_dist ~ visit_wo6 + id,
+              permutations = 999, na.action=na.exclude, data = metadata)
+
+vegan::adonis2(BC_dist ~ id + visit_wo6,
+              permutations = 999, na.action=na.exclude, data = metadata)
+```
+
+## HILIC positive
+```{r permanova HILIC_pos}
+# PERMANOVA data preparation
+
+# calculate BC_distance
+BC_dist <- phyloseq::distance(ps_HILIC_pos, method="bray", weighted=T, na.rm=T)
+
+#extract metadata
+metadata<- as(sample_data(ps_HILIC_pos),"data.frame")
+
+vegan::adonis2(BC_dist ~ visit_wo6 + id,
+              permutations = 999, na.action=na.exclude, data = metadata, by="margin")
+
+vegan::adonis2(BC_dist ~ visit_wo6 + id,
+              permutations = 999, na.action=na.exclude, data = metadata)
+
+vegan::adonis2(BC_dist ~ id + visit_wo6,
+              permutations = 999, na.action=na.exclude, data = metadata)
+```
+
+## RP negative
+```{r permanova RP_neg}
+# PERMANOVA data preparation
+
+set.seed(123)
+
+# calculate BC_distance
+BC_dist <- phyloseq::distance(ps_RP_neg, method="bray", weighted=T, na.rm=T)
+
+#extract metadata
+metadata<- as(sample_data(ps_RP_neg),"data.frame")
+
+vegan::adonis2(BC_dist ~ visit_wo6 + id,
+              permutations = 999, na.action=na.exclude, data = metadata, by="margin")
+
+vegan::adonis2(BC_dist ~ visit_wo6 + id,
+              permutations = 999, na.action=na.exclude, data = metadata)
+
+vegan::adonis2(BC_dist ~ id + visit_wo6,
+              permutations = 999, na.action=na.exclude, data = metadata)
+```
+
+## RP positive
+```{r permanova RP_pos}
+# PERMANOVA data preparation
+
+set.seed(123)
+
+# calculate BC_distance
+BC_dist <- phyloseq::distance(ps_RP_pos, method="bray", weighted=T, na.rm=T)
+
+#extract metadata
+metadata<- as(sample_data(ps_RP_pos),"data.frame")
+
+vegan::adonis2(BC_dist ~ visit_wo6 + id,
+              permutations = 999, na.action=na.exclude, data = metadata, by="margin")
+
+vegan::adonis2(BC_dist ~ visit_wo6 + id,
+              permutations = 999, na.action=na.exclude, data = metadata)
+
+vegan::adonis2(BC_dist ~ id + visit_wo6,
+              permutations = 999, na.action=na.exclude, data = metadata)
+```
+
+# Univariate analysis
+## HILIC negative
+```{r univariate HILIC_neg, fig.height= 30, fig.width=30}
+
+ps_HILIC_neg_melted <- psmelt(ps_HILIC_neg)
+
+ps_HILIC_neg_melted %>%
+  ggplot(aes(x=visit_wo6, y=Abundance, fill=visit_wo6))+
+  geom_boxplot()+
+  geom_point(alpha = 0.5)+
+  facet_wrap("OTU", scales="free", ncol = 5)+
+  theme_bw()+
+  ggtitle("All metabolites of HILIC neg, MS2 annotation 3&4")+
+  theme(axis.text.x = element_blank()) +
+  ylab("intensity")+
+  xlab("")+
+  theme(legend.key.height= unit(5, 'mm'),
+        legend.key.width= unit(5, 'mm'),legend.text = element_text(size=12), legend.position = "bottom", 
+        axis.ticks = element_blank(), axis.text.x = element_blank(), strip.text.x = element_text(
+        size = 8))
+```
+
+### display only significant different metabolites:
+#### in the reduced dataset, there are no significant differences for HILIC_neg
+```{r univariate HILIC_neg sig, eval=FALSE}
+
+my_comparisons_visit_wo6 <- list(c("1","2"), c("3","4"), c("5","6"), c("7","9"), c("1","3"), c("1", "4"), c("1", "5"), c("1", "6"), c("1", "7"), c("1", "9"))
+
+stats_metabolite_kruskal <- ggpubr::compare_means(Abundance~visit_wo6, data= ps_HILIC_neg_melted,  method = "kruskal.test", p.adjust.method="BH", group.by = "OTU")
+
+met_results_sig_kruskal <- stats_metabolite_kruskal%>%
+  filter(p.adj<0.1)
+
+met_results_sig_kruskal_list <- c(met_results_sig_kruskal$OTU)
+
+met_results_sig_kruskal_df <- ps_HILIC_neg_melted[ps_HILIC_neg_melted$OTU %in% c(met_results_sig_kruskal_list),]
+
+stats_metabolite <- ggpubr::compare_means(Abundance~visit_wo6, data= met_results_sig_kruskal_df,  method = "wilcox.test", p.adjust.method="BH", group.by = "OTU")
+
+met_results_sig <- stats_metabolite%>%
+  filter(p.adj<0.05)
+
+met_results_sig_list <- c(met_results_sig$OTU)
+
+met_sig_df <- met_results_sig_kruskal_df[met_results_sig_kruskal_df$OTU %in% c(met_results_sig_list),]
+
+met_sig_df
+
+met_sig_df%>%
+  ggplot(aes(x=visit_wo6, y=Abundance, fill=visit_wo6))+
+  geom_boxplot()+
+  geom_point(position=position_jitterdodge(), alpha = 0.5)+
+  facet_wrap("general_all_annot_ms1", scales="free")+ #, ncol = 6
+  theme_bw()+
+  ggtitle("Differences in intensity of significant metabolites in HILIC_neg")+
+  #scale_fill_manual(values= c("#FD6F30FF", "#F9D23CFF","#EB1E2CFF"), name="Sample type",
+                         #breaks=c("A", "B","C"),
+                         #labels=c("Preterm infant - probiotic", "Preterm infant- placebo","Fullterm infant"))+
+  theme(axis.text.x = element_blank()) +
+  ylab("intensity")+
+  xlab("")+
+  theme(legend.key.height= unit(5, 'mm'),
+        legend.key.width= unit(5, 'mm'),legend.text = element_text(size=12), legend.position = "bottom", 
+        axis.ticks = element_blank(), axis.text.x = element_blank(), strip.text.x = element_text(
+        size = 8))+
+  stat_compare_means(comparison=my_comparisons_visit_wo6, method="wilcox.test", p.adjust.method="BH", label = "p.signif", hide.ns=TRUE)
+```
+
+## HILIC positive
+```{r univariate HILIC_pos, fig.height= 30, fig.width=30}
+
+df_comp_relab <- psmelt(ps_HILIC_pos)
+
+#my_comparisons_pt <- list(c("0","1"))
+
+df_comp_relab %>%
+  ggplot(aes(x=visit_wo6, y=Abundance, fill=visit_wo6))+
+  geom_boxplot()+
+  geom_point(alpha = 0.5)+
+  facet_wrap("OTU", scales="free", ncol = 5)+
+  theme_bw()+
+  ggtitle("Metabolites annotated 3&4 in ms2")+
+  theme(axis.text.x = element_blank()) +
+  ylab("intensity")+
+  xlab("")+
+  theme(legend.key.height= unit(5, 'mm'),
+        legend.key.width= unit(5, 'mm'),legend.text = element_text(size=12), legend.position = "bottom", 
+        axis.ticks = element_blank(), axis.text.x = element_blank(), strip.text.x = element_text(
+        size = 8))
+```
+
+### display only significant different metabolites: for HILIC_pos there are no significantly different metabolites between visit_wo6s
+```{r univariate HILIC_pos sig, eval=FALSE}
+
+my_comparisons_visit_wo6 <- list(c("1","2"), c("3","4"), c("5","6"), c("7","9"), c("1","3"), c("1", "4"), c("1", "5"), c("1", "6"), c("1", "7"), c("1", "9"))
+
+stats_metabolite_kruskal <- ggpubr::compare_means(Abundance~visit_wo6, data= df_comp_relab,  method = "kruskal.test", p.adjust.method="BH", group.by = "OTU")
+
+met_results_sig_kruskal <- stats_metabolite_kruskal%>%
+  filter(p.adj<0.1)
+
+met_results_sig_kruskal_list <- c(met_results_sig_kruskal$OTU)
+
+met_results_sig_kruskal_df <- df_comp_relab[df_comp_relab$OTU %in% c(met_results_sig_kruskal_list),]
+
+stats_metabolite <- ggpubr::compare_means(Abundance~visit_wo6, data= met_results_sig_kruskal_df,  method = "wilcox.test", p.adjust.method="BH", group.by = "OTU")
+
+met_results_sig <- stats_metabolite%>%
+  filter(p.adj<0.05)
+
+met_results_sig_list <- c(met_results_sig$OTU)
+
+met_sig_df <- met_results_sig_kruskal_df[met_results_sig_kruskal_df$OTU %in% c(met_results_sig_list),]
+
+met_sig_df$general_all_annot_ms2
+
+met_sig_df%>%
+  ggplot(aes(x=visit_wo6, y=Abundance, fill=visit_wo6))+
+  geom_boxplot()+
+  geom_point(position=position_jitterdodge(), alpha = 0.5)+
+  facet_wrap("general_all_annot_ms1", scales="free")+ #, ncol = 6
+  theme_bw()+
+  ggtitle("Differences in intensity of significant metabolites in HILIC_pos")+
+  #scale_fill_manual(values= c("#FD6F30FF", "#F9D23CFF","#EB1E2CFF"), name="Sample type",
+                         #breaks=c("A", "B","C"),
+                         #labels=c("Preterm infant - probiotic", "Preterm infant- placebo","Fullterm infant"))+
+  theme(axis.text.x = element_blank()) +
+  ylab("intensity")+
+  xlab("")+
+  theme(legend.key.height= unit(5, 'mm'),
+        legend.key.width= unit(5, 'mm'),legend.text = element_text(size=12), legend.position = "bottom", 
+        axis.ticks = element_blank(), axis.text.x = element_blank(), strip.text.x = element_text(
+        size = 8))+
+  stat_compare_means(comparison=my_comparisons_visit_wo6, method="wilcox.test", p.adjust.method="BH", label = "p.signif", hide.ns=TRUE)
+```
+
+## RP negative
+```{r univariate RP_neg, fig.height= 30, fig.width=30}
+
+df_comp_relab <- psmelt(ps_RP_neg)
+
+df_comp_relab %>%
+  ggplot(aes(x=visit_wo6, y=Abundance, fill=visit_wo6))+
+  geom_boxplot()+
+  geom_point(alpha = 0.5)+
+  facet_wrap("OTU", scales="free", ncol = 5)+
+  theme_bw()+
+  ggtitle("100 top metabolites of PCA")+
+  theme(axis.text.x = element_blank()) +
+  ylab("intensity")+
+  xlab("")+
+  theme(legend.key.height= unit(5, 'mm'),
+        legend.key.width= unit(5, 'mm'),legend.text = element_text(size=12), legend.position = "bottom", 
+        axis.ticks = element_blank(), axis.text.x = element_blank(), strip.text.x = element_text(
+        size = 8))
+```
+
+### display only significant different metabolites:
+```{r univariate RP_neg sig}
+
+my_comparisons_visit_wo6 <- list(c("1","2"), c("3","4"), c("5","6"), c("7","9"), c("1","3"), c("1", "4"), c("1", "5"), c("1", "6"), c("1", "7"), c("1", "9"))
+
+stats_metabolite_kruskal <- ggpubr::compare_means(Abundance~visit_wo6, data= df_comp_relab,  method = "kruskal.test", p.adjust.method="BH", group.by = "OTU")
+
+met_results_sig_kruskal <- stats_metabolite_kruskal%>%
+  filter(p.adj<0.1)
+
+met_results_sig_kruskal_list <- c(met_results_sig_kruskal$OTU)
+
+met_results_sig_kruskal_df <- df_comp_relab[df_comp_relab$OTU %in% c(met_results_sig_kruskal_list),]
+
+stats_metabolite <- ggpubr::compare_means(Abundance~visit_wo6, data= met_results_sig_kruskal_df,  method = "wilcox.test", p.adjust.method="BH", group.by = "OTU")
+
+met_results_sig <- stats_metabolite%>%
+  filter(p.adj<0.05)
+
+met_results_sig_list <- c(met_results_sig$OTU)
+
+met_sig_df <- met_results_sig_kruskal_df[met_results_sig_kruskal_df$OTU %in% c(met_results_sig_list),]
+
+met_sig_df <- met_sig_df%>%
+  mutate(annotation = paste(general_all_annot_ms1, general_all_annot_ms2, sep = "/"))
+
+unique(met_sig_df$annotation)
+
+met_sig_df%>%
+  ggplot(aes(x=visit_wo6, y=Abundance, fill=visit_wo6))+
+  geom_boxplot()+
+  geom_point(position=position_jitterdodge(), alpha = 0.5)+
+  facet_wrap("annotation", scales="free")+ #, ncol = 6
+  theme_bw()+
+  ggtitle("Differences in intensity of significant metabolites in RP_neg")+
+  #scale_fill_manual(values= c("#FD6F30FF", "#F9D23CFF","#EB1E2CFF"), name="Sample type",
+                         #breaks=c("A", "B","C"),
+                         #labels=c("Preterm infant - probiotic", "Preterm infant- placebo","Fullterm infant"))+
+  theme(axis.text.x = element_blank()) +
+  ylab("intensity")+
+  xlab("")+
+  theme(legend.key.height= unit(5, 'mm'),
+        legend.key.width= unit(5, 'mm'),legend.text = element_text(size=12), legend.position = "bottom", 
+        axis.ticks = element_blank(), axis.text.x = element_blank(), strip.text.x = element_text(
+        size = 8))+
+  stat_compare_means(comparison=my_comparisons_visit_wo6, method="wilcox.test", p.adjust.method="BH", label = "p.signif", hide.ns=TRUE)
+
+met_sig_df%>%
+  distinct(OTU, .keep_all = TRUE)%>%
+  select(OTU,general_all_annot_ms1,general_all_annot_ms2)
+
+met_sig_df%>%
+  ggplot(aes(x=visit_wo6, y=Abundance, fill=visit_wo6))+
+  geom_boxplot()+
+  geom_point(position=position_jitterdodge(), alpha = 0.5)+
+  facet_wrap("OTU", scales="free", ncol=4)+
+  theme_bw()+
+  ggtitle("Differences in intensity of significant metabolites in RP_neg")+
+  #scale_fill_manual(values= c("#FD6F30FF", "#F9D23CFF","#EB1E2CFF"), name="Sample type",
+                         #breaks=c("A", "B","C"),
+                         #labels=c("Preterm infant - probiotic", "Preterm infant- placebo","Fullterm infant"))+
+  theme(axis.text.x = element_blank()) +
+  ylab("intensity")+
+  xlab("")+
+  theme(legend.key.height= unit(5, 'mm'),
+        legend.key.width= unit(5, 'mm'),legend.text = element_text(size=12), legend.position = "bottom", 
+        axis.ticks = element_blank(), axis.text.x = element_blank(), strip.text.x = element_text(
+        size = 8))+
+  stat_compare_means(comparison=my_comparisons_visit_wo6, method="wilcox.test", p.adjust.method="BH", label = "p.signif", hide.ns=TRUE)
+
+# only Tryptophan, as Karin said this metabolite can be reliably annotated FT0152
+p_trypto <- met_sig_df%>%
+  filter(OTU=="FT0152") %>% 
+  ggplot(aes(x=visit_wo6, y=Abundance, fill=visit_wo6))+
+  geom_boxplot()+
+  geom_point(position=position_jitterdodge(), alpha = 0.5)+
+  #facet_wrap("OTU", scales="free", ncol=4)+
+  theme_bw()+
+  ggtitle("Differences in intensity of significant metabolites in RP_neg")+
+  #scale_fill_manual(values= c("#FD6F30FF", "#F9D23CFF","#EB1E2CFF"), name="Sample type",
+                         #breaks=c("A", "B","C"),
+                         #labels=c("Preterm infant - probiotic", "Preterm infant- placebo","Fullterm infant"))+
+  theme(axis.text.x = element_blank()) +
+  ylab("intensity")+
+  xlab("")+
+  theme(legend.key.height= unit(5, 'mm'),
+        legend.key.width= unit(5, 'mm'),legend.text = element_text(size=12), legend.position = "bottom", 
+        axis.ticks = element_blank(), axis.text.x = element_blank(), strip.text.x = element_text(
+        size = 8))+
+  stat_compare_means(comparison=my_comparisons_visit_wo6, method="wilcox.test", p.adjust.method="BH", label = "p.signif", hide.ns=TRUE)
+
+saveRDS(p_trypto, "/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/Tryptophan_RP_neg.rds")
+```
+
+## RP positive
+```{r univariate RP_pos, fig.height= 30, fig.width=30}
+df_comp_relab <- psmelt(ps_RP_pos)
+
+df_comp_relab  %>%
+  ggplot(aes(x=visit_wo6, y=Abundance, fill=visit_wo6))+
+  geom_boxplot()+
+  geom_point(alpha = 0.5)+
+  facet_wrap("OTU", scales="free", ncol = 5)+
+  theme_bw()+
+  ggtitle("100 top metabolites of PCA")+
+  theme(axis.text.x = element_blank()) +
+  ylab("intensity")+
+  xlab("")+
+  theme(legend.key.height= unit(5, 'mm'),
+        legend.key.width= unit(5, 'mm'),legend.text = element_text(size=12), legend.position = "bottom", 
+        axis.ticks = element_blank(), axis.text.x = element_blank(), strip.text.x = element_text(
+        size = 8))
+```
+
+### display only significant different metabolites:
+```{r univariate RP_pos sig, warning=FALSE}
+
+my_comparisons_visit_wo6 <- list(c("1","2"), c("3","4"), c("5","6"), c("7","9"), c("1","3"), c("1", "4"), c("1", "5"), c("1", "6"), c("1", "7"), c("1", "9"))
+
+stats_metabolite_kruskal <- ggpubr::compare_means(Abundance~visit_wo6, data= df_comp_relab,  method = "kruskal.test", p.adjust.method="BH", group.by = "OTU")
+
+met_results_sig_kruskal <- stats_metabolite_kruskal%>%
+  filter(p.adj<0.1)
+
+met_results_sig_kruskal_list <- c(met_results_sig_kruskal$OTU)
+
+met_results_sig_kruskal_df <- df_comp_relab[df_comp_relab$OTU %in% c(met_results_sig_kruskal_list),]
+
+stats_metabolite <- ggpubr::compare_means(Abundance~visit_wo6, data= met_results_sig_kruskal_df,  method = "wilcox.test", p.adjust.method="BH", group.by = "OTU")
+
+met_results_sig <- stats_metabolite%>%
+  filter(p.adj<0.05)
+
+met_results_sig_list <- c(met_results_sig$OTU)
+
+met_sig_df <- met_results_sig_kruskal_df[met_results_sig_kruskal_df$OTU %in% c(met_results_sig_list),]
+
+met_sig_df <- met_sig_df%>%
+  mutate(annotation = paste(general_all_annot_ms1, general_all_annot_ms2, sep = "/"))
+
+unique(met_sig_df$annotation)
+
+p_iva <- met_sig_df%>%
+  ggplot(aes(x=visit_wo6, y=Abundance, fill=visit_wo6))+
+  geom_boxplot()+
+  geom_point(position=position_jitterdodge(), alpha = 0.5)+
+  facet_wrap("annotation", scales="free")+ #, ncol = 6
+  theme_bw()+
+  ggtitle("Differences in intensity of significant metabolites in RP_pos")+
+  #scale_fill_manual(values= c("#FD6F30FF", "#F9D23CFF","#EB1E2CFF"), name="Sample type",
+                         #breaks=c("A", "B","C"),
+                         #labels=c("Preterm infant - probiotic", "Preterm infant- placebo","Fullterm infant"))+
+  theme(axis.text.x = element_blank()) +
+  ylab("intensity")+
+  xlab("")+
+  theme(legend.key.height= unit(5, 'mm'),
+        legend.key.width= unit(5, 'mm'),legend.text = element_text(size=12), legend.position = "bottom", 
+        axis.ticks = element_blank(), axis.text.x = element_blank(), strip.text.x = element_text(
+        size = 8))+
+  stat_compare_means(comparison=my_comparisons_visit_wo6, method="wilcox.test", p.adjust.method="BH", label = "p.signif", hide.ns=TRUE)
+p_iva
+#saveRDS(p_iva, "/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/Ivacaftor_RP_pos.rds")
+
+
+met_sig_df%>%
+  ggplot(aes(x=visit_wo6, y=Abundance, fill=visit_wo6))+
+  geom_boxplot()+
+  geom_point(position=position_jitterdodge(), alpha = 0.5)+
+  facet_wrap("OTU", scales="free")+ #, ncol = 6
+  theme_bw()+
+  ggtitle("Differences in intensity of significant metabolites in RP_pos")+
+  #scale_fill_manual(values= c("#FD6F30FF", "#F9D23CFF","#EB1E2CFF"), name="Sample type",
+                         #breaks=c("A", "B","C"),
+                         #labels=c("Preterm infant - probiotic", "Preterm infant- placebo","Fullterm infant"))+
+  theme(axis.text.x = element_blank()) +
+  ylab("intensity")+
+  xlab("")+
+  theme(legend.key.height= unit(5, 'mm'),
+        legend.key.width= unit(5, 'mm'),legend.text = element_text(size=12), legend.position = "bottom", 
+        axis.ticks = element_blank(), axis.text.x = element_blank(), strip.text.x = element_text(
+        size = 8))+
+  stat_compare_means(comparison=my_comparisons_visit_wo6, method="wilcox.test", p.adjust.method="BH", label = "p.signif", hide.ns=TRUE)
+```

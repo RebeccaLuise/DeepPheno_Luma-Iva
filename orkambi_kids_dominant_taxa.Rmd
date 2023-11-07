@@ -26,7 +26,7 @@ All cluster by dominant Genus
 
 ```{r prepare data 16s}
 
-ps_orkambi_work <- readRDS("ps_orkambi_trimmed.rds")
+ps_orkambi_work <- readRDS("~/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/data/ps_orkambi_trimmed.rds")
 
 # relative abundance in percent
 ps_orkambi_rel_100 <- transform_sample_counts(ps_orkambi_work, function(x) x/sum(x)*100) 

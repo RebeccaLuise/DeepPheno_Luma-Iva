@@ -1,0 +1,203 @@
+---
+title: "GG alluvial plot for genus dominance in sputum"
+author: "Rebecca L. Knoll"
+date: " last edit `r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+    code_folding: show
+    number_sections: yes
+    smart: no
+    toc: yes
+    df_print: paged
+    toc_float: yes
+---
+
+```{r setup 2, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache= FALSE, warning = FALSE)
+```
+
+```{r run import script, include=FALSE}
+# run script to tidy the data and to load packages, create phyloseq object (ps_clean) and load libraries
+ps_full <- readRDS("/Users/rebecca/Documents/Forschung/IMMProveCF/R_analysis/rds_files/ps_full_IMP.rds")
+
+pacman::p_load(tidyverse, phyloseq, magrittr, janitor, microbiome, knitr, lubridate, naniar, readxl, ggplot2, ggpubr, ggalluvial)
+
+source("/Users/rebecca/Documents/Forschung/IMMProveCF/R_analysis/IMMProveCF/functions_full.R")
+
+# assign colors
+
+id_palette <- c(IMP11="#4E79A7FF", IMP12="#E78AC3", IMP13="#A0CBE8FF",IMP15="#F28E2BFF",IMP16="#FFBE7DFF",IMP17="#59A14FFF",IMP18="#8DD3C7" ,IMP19="#FFFFB3", IMP20="#BEBADA", IMP21="#B07AA1FF", IMP22="#FB8072", IMP23="#80B1D3", IMP24="#8CD17DFF", IMP25="#B6992DFF",IMP26="#F1CE63FF",IMP27="#499894FF", IMP28="#FDB462", IMP29="#86BCB6FF", IMP30="#FCCDE5", IMP31="#D9D9D9", IMP32="#E15759FF",  IMP33="#FF9D9AFF", IMP35="#79706EFF", IMP36="#BC80BD", IMP37="black", IMP38="#CCEBC5", IMP39="#FFED6F", IMP40="#66C2A5", IMP41="#FC8D62", IMP5="#BAB0ACFF", IMP6="#D37295FF",IMP8="#FFD92F", IMP9="#E5C494", IMP42="#E41A1C", IMP43="#377EB8")
+
+# subset sputum providing patients
+
+sputum_id <- c("IMP11",  "IMP13", "IMP15", "IMP16", "IMP17", "IMP24", "IMP25", "IMP26", "IMP27", "IMP29", "IMP31", "IMP32", "IMP33", "IMP35", "IMP5",  "IMP6", "IMP9",  "IMP21", "IMP8")
+
+sputum_palette <- c(IMP11="#4E79A7FF", IMP13="#A0CBE8FF",IMP15="#F28E2BFF",IMP16="#FFBE7DFF",IMP17="#59A14FFF", IMP24="#8CD17DFF", IMP25="#B6992DFF",IMP26="#F1CE63FF",IMP27="#499894FF", IMP29="#86BCB6FF",IMP31="#D9D9D9", IMP32="#E15759FF",  IMP33="#FF9D9AFF",  IMP35="#79706EFF",IMP5="#BAB0ACFF", IMP6="#D37295FF", IMP9="#E5C494", IMP21="#B07AA1FF", IMP8="black")
+
+dom_palette <- c(paletteer_d("ggthemes::Nuriel_Stone"))
+dom_palette <- c(Streptococcus="#69b3a2", Staphylococcus = "#8175AA", Fusobacterium="#6FB899FF", Prevotella_7="#31A1B3FF", Rothia="#027B8EFF", Pseudomonas="#EE6AA7", Eikenella="#94D0C0FF", Haemophilus="#CCB22BFF", Achromobacter="#9F8F12FF", Gemella= "#97CFD0" , Moraxella= "#6FB899", `missing sample` = "#CFCFCF")
+
+```
+
+```{r subset per material}
+
+# subset sputum
+ps_full_sputum <- subset_samples(ps_full, material== "Sputum")
+
+# remove zero abundances from  dataset
+ps_sputum <- tax_filter(ps_full_sputum, min_prevalence = 1,
+  prev_detection_threshold = 1, min_total_abundance = 0, min_sample_abundance = 0, tax_level = NA,
+  names_only = FALSE, use_counts = TRUE, undetected = NULL,verbose = TRUE)
+
+# calculate relative abundances
+ps_full_relab <- transform_sample_counts(ps_full, function(x) x/sum(x))
+ps_sputum_relab <- transform_sample_counts(ps_sputum, function(x) x/sum(x))
+
+```
+
+```{r find dominant genus; most abundant taxa per patient in sputum}
+
+# Analysis on most abundant taxa per patient in sputum
+ps_sputum_glom <- tax_glom(ps_sputum_relab, taxrank = "Genus")
+
+#Get top taxa per patient
+#find.top.taxa2 is sourced from functions.R
+top.sputum<- find.top.taxa2(ps_sputum_glom, "Genus",1)
+top.sputum$Species<- NULL
+
+rslt <- top.sputum[, "taxa"]
+dd <- matrix(unlist(rslt), nrow=1)
+colnames(dd) <- rownames(top.sputum)
+top.sputum <- t(dd)
+
+top.sputum_df <- data.frame(x1 = row.names(top.sputum), top.sputum)%>%
+  mutate(dominantGenus = top.sputum)
+top.sputum_df$top.sputum<- NULL
+
+##Add dominant Genus to ps_sputum_glom sample data
+ps_sputum_glom <- microViz::ps_join(ps_sputum_glom, top.sputum_df, by = "x1")
+```
+
+```{r reshape metadata for ggalluvial}
+
+# extract metadata
+full_metadata <- as(sample_data(ps_sputum_glom), "data.frame")
+
+# pivot wider per visit_sum ( reduce first number of columns for more clearness)
+
+metadata <- full_metadata%>%
+  select(x1, visit_sum, visit_cal_cor,  id.y, id_visit, dominantGenus)
+
+m_count <- metadata%>%
+  group_by(visit_sum)%>%
+  count(dominantGenus)%>%
+  pivot_wider(names_from = visit_sum, values_from = n, names_prefix = "V")
+
+metadata_w <- metadata%>%
+  pivot_wider(names_from = visit_cal_cor, values_from = dominantGenus, names_prefix = "V")%>%
+  mutate(n_observation = c(1:57))
+
+metadata_w%>%count(V1)
+
+metadata_w2 <- metadata%>%
+  select(-c(visit_sum, x1))%>%
+  pivot_wider(names_from = visit_cal_cor, values_from = dominantGenus, names_prefix = "V")%>%
+  mutate(V8V9=coalesce(V8,V9))%>%
+  group_by(id.y) %>% 
+  summarise(across(everything(), ~ max(., na.rm = T)))%>% # merges the rows of same id patients
+  mutate(domGenus = factor(V1, levels=c("Streptococcus", "Staphylococcus", "Fusobacterium", "Prevotella_7", "Rothia", "Pseudomonas", "Eikenella", "Haemophilus", "Achromobacter","Gemella" , "Moraxella", "`missing sample`")))
+  
+
+```
+
+```{r alluvial plot}
+
+# display only samples with follow up
+fu_id <- metadata%>%
+  filter(visit_cal_cor!=1)%>%
+  select(id.y)%>%
+  filter(id.y!="IMP8")
+
+fu_id <- fu_id$id.y
+
+#in order to have each visits per patient in my dataframe, even if they had no sampling conducted at that timepoint, I need to add a dummie row for it
+
+visit_fictional <- c(1:9)
+
+vist_fic_df <- merge(fu_id, visit_fictional)%>%
+ mutate(id_visit =  paste(x, y, sep="V"))%>%
+  distinct(id_visit, .keep_all = T)
+
+metadata_fic <- metadata%>%
+  filter(id.y%in%fu_id)%>%
+  right_join(vist_fic_df, by="id_visit")%>%
+  mutate(dominantGenus_new = as_factor(case_when(is.na(dominantGenus) ~ "missing sample")))%>%
+  mutate(dominantGenus_new = as_factor(coalesce(dominantGenus, dominantGenus_new)))%>%
+  mutate(visit=as_factor(y))%>%
+  mutate(visit_small = as_factor(case_when(visit=="9"~"8", TRUE~visit)))
+
+ metadata_fic$visit_small <-  fct_relevel(metadata_fic$visit_small, sort)
+
+# for alluvial format I now have to remove the "double" visit 8
+
+id_rm <- c("IMP29V9","IMP5V9", "IMP6V8", "IMP8V8", "IMP21V9", "IMP25V9", "IMP11V8", "IMP26V9", "IMP24V9", "IMP27V9", "IMP33V9", "IMP9V9")
+
+
+
+metadata_fic%>%
+  filter(!id_visit%in%id_rm)%>%
+  ggplot(aes(x = visit_small, stratum = dominantGenus_new, alluvium = x,
+           fill =dominantGenus_new)) +
+  scale_fill_manual(values= dom_palette,guide =
+                         guide_legend(label.theme = element_text(angle = 0, face = "italic", size = 16)))+
+  geom_lode() + 
+  geom_flow(curve_type = "arctangent",width = .3, color="black") +
+  geom_stratum(alpha = 0.6)+
+  theme_pubr()+
+  theme(legend.position="right", text = element_text(size=20))+
+  labs(fill="Dominant genus in sputum")+
+  labs(x="Months from treatment start")+
+  labs(y = "n samples")+
+  scale_x_discrete(labels=c("0", "3","6","9","12","15","18","21-24"))
+
+ggsave("/Users/rebecca/Documents/Forschung/IMMProveCF/R_analysis/figures/alluvial_dominantGenus.pdf", width = 12, height = 7)
+```
+
+```{r other options}
+
+metadata_fic%>%
+  filter(!id_visit%in%id_rm)%>%
+  ggplot(aes(x = visit_small, stratum = dominantGenus_new, alluvium = x,
+           fill =dominantGenus_new)) +
+  scale_fill_manual(values= dom_palette)+
+  #scale_color_manual(values=sputum_palette)+
+  geom_lode() + 
+  geom_alluvium(aes(fill="grey"),curve_type = "arctangent")+
+  #geom_flow(aes(color=id.y),curve_type = "arctangent",width = .4, color="black") +
+  geom_stratum(alpha = 0.5)#+
+  #geom_line(aes(group=x))+
+  #geom_text(stat = "stratum", aes(label = dominantGenus_new))#round(after_stat(prop*100), 0),
+                #hjust = (after_stat(stratum) == "to")))
+
+metadata_w2%>%
+  filter(id.y%in%fu_id)%>%
+  filter(id.y!="IMP8")%>%
+  ggplot(aes(axis1=V1, axis2 = V2, axis3=V3, axis4=V4, axis5=V5, axis6=V6, axis7=V7, axis8=V8V9))+
+  geom_alluvium(aes(fill=V1))+
+  geom_stratum() +
+  geom_text(stat = "stratum", aes(label = paste(after_stat(stratum))))
+
+metadata_w2%>%
+  filter(id.y%in%fu_id)%>%
+  filter(id.y!="IMP8")%>%
+  ggplot(aes(axis1=V1, axis2 = V2, axis3=V3, axis4=V4, axis5=V5, axis6=V6, axis7=V7, axis8=V8V9))+
+  geom_alluvium(aes(fill="grey"))+
+  geom_stratum(aes(fill=domGenus)) +
+  geom_text(stat = "stratum", aes(label = paste(after_stat(stratum))))+
+  scale_fill_manual(values= dom_palette)#+
+  scale_fill_manual(values=sputum_palette)
+
+metadata_w2$V1
+  
+```
+
