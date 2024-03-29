@@ -15,17 +15,28 @@ getwd()
 # install and load all needed packages
 library(pacman)
 pacman::p_load(tidyverse, phyloseq, magrittr, janitor, microbiome, knitr, lubridate, naniar, stringr)
+#remotes::install_version("Matrix", version = "1.4-1")
 
+#renv::activate()
+#renv::status()
+#renv::snapshot()
 
-renv::activate()
-renv::status()
-renv::snapshot()
+#renv::restore()
+#renv::dependencies()
+
+#renv::history()
+
+#renv::update()
+
+sessionInfo()
 ```
 
 # Load data
 ```{r load data}
 
 data <- readRDS("/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/data/metadata_combined_031123.rds")
+
+my_colors_id <- c("#C03728FF", "#919C4CFF", "#FD8F24FF", "#F5C04AFF", "#E68C7CFF", "#C3C377FF", "#4F5157FF", "#6F5438FF") # "#828585FF",
 
 data$gender <- as_factor(data$gender)
 data  <- data %>% 
@@ -52,9 +63,9 @@ data_v8 <- data %>%
 data_v9 <- data %>% 
   filter(visit=="9")
 ```
+
 # Cohort characteristics at baseline
 ```{r Cohort characteristics at baseline}
-
 library(gtsummary)
 
 baseline <- data_v1 %>% select(sex, age, bmi_zscore, pp_fev1, pp_fvc)
@@ -64,12 +75,44 @@ baseline %>% tbl_summary(type = c( age = "continuous", bmi_zscore = "continuous"
   as_gt() %>%
   gt::gtsave(filename = "baseline.docx")
 
+summary(baseline$age)
+```
 
+# Cohort characteristics follow-up
+```{r Cohort characteristics fu}
 trial2 <- data %>% select(visit, sex, age, bmi_zscore, pp_fev1, pp_fvc)
+
+summary(trial2$age)
 
 trial2%>% tbl_summary(by=visit, type = c( age = "continuous", bmi_zscore = "continuous", pp_fev1= "continuous", pp_fvc= "continuous"), missing="no")%>%
   as_gt() %>%
   gt::gtsave(filename = "characteristics_allVisits.docx")
+
+```
+
+```{r overall statistics for all serum}
+
+summary(lmerTest::lmer(ig_g ~ visit_wo8+ (1|id), data))
+summary(lmerTest::lmer(GOT ~ visit_wo8 +(1|id), data))
+summary(lmerTest::lmer(GPT ~ visit_wo8 +(1|id), data))
+summary(lmerTest::lmer(calprotectin ~ visit +(1|id), data))
+data$calprotectin
+```
+
+
+```{r correlation analysis}
+
+summary(lmerTest::lmer(ig_g ~ sweatchloride_mmol_l + (1|id), data))
+
+data %>% 
+  ggplot(aes(sweatchloride_mmol_l, ig_g, color=id))+
+  geom_point()+
+  stat_smooth(method="lm", se = F)+
+  scale_color_manual(values=my_colors_id)
+
+
+data %>% 
+  filter(visit=="4")
 
 ```
 

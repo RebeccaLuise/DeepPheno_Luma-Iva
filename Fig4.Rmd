@@ -1,0 +1,539 @@
+---
+title: "Figure 4"
+author: "Rebecca L. Knoll"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup1, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r path and packages1, include=FALSE}
+library(pacman)
+
+pacman::p_load(tidyverse, magrittr, janitor, microbiome, knitr, naniar, phyloseq, 
+               textshape, Biostrings, markdown, vegan, rstatix, gdata, tableone, ggpubr, microViz)
+
+```
+
+```{r run tidy script, include=FALSE}
+# load data
+ps_orkambi_work <- readRDS("~/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/data/ps_orkambi_trimmed.rds")
+ps_orkambi_work_rel <- readRDS("~/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/data/ps_orkambi_trimmed_relative.rds")
+
+# sputum
+ps_orkambi_sputum <- subset_samples(ps_orkambi_work, material == "Sputum")
+ps_orkambi_sputum_rel <- subset_samples(ps_orkambi_work_rel, material == "Sputum")
+
+# throat
+ps_orkambi_throat <- subset_samples(ps_orkambi_work, material == "Throat")
+ps_orkambi_throat_rel <- subset_samples(ps_orkambi_work_rel, material == "Throat")
+
+# respiratory
+ps_resp_rel <- subset_samples(ps_orkambi_work_rel, material == "Throat" | material == "Sputum")
+ps_resp <- subset_samples(ps_orkambi_work, material == "Throat" | material == "Sputum")
+```
+
+### Preprocessing    
+```{r prepare metadata, include=FALSE}
+Metadata_filt_2_1_9 <- data.frame(sample_data(ps_orkambi_work))
+Metadata_filt_2_1_9$total_reads <- sample_sums(ps_orkambi_work)
+
+metadata_unique <- Metadata_filt_2_1_9[!duplicated(Metadata_filt_2_1_9[ , c("probe_id")]), ]
+
+#write_csv(metadata_unique, "/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/metadata_raw.csv")
+# I have to add missing lung functions and sweat chlorides from id8, i do this directly in the generated csv and reload the file
+
+metadata_complete <- read_delim("/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/data/metadata_complete.csv")
+metadata_complete <- metadata_complete %>% 
+  mutate(id_visit=paste(id, visit, sep="_")) %>% 
+  mutate(sex=gender)
+
+metadata_complete[metadata_complete  == 9999] <- NA # replace placeholders by the study team with N
+metadata_complete[metadata_complete  == 99999] <- NA
+# combine with liver enzymes
+liver_df <- readxl::read_excel("/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/Liver_enzymes_all.xlsx")
+
+liver_df <- liver_df %>% 
+  mutate(id_visit=paste(id, visit, sep="_")) %>% 
+  select(id_visit, GOT,GPT)
+
+metadata_complete <- metadata_complete%>% 
+  left_join(liver_df, by="id_visit")
+
+# add ig_g response
+# igg_response
+# 0 = bad
+# 1 = good
+
+metadata_complete <- metadata_complete %>%
+   mutate(igg_response = case_when(id == 2 | id == 3 | id == 4 ~ FALSE,
+                                 TRUE ~ TRUE)) %>%
+   relocate(igg_response, .before = base)
+
+# As id 8 is often the only participant with a V8 and that ruins visualization I will create a new variable where V8 is V9
+metadata_complete <- metadata_complete%>%
+  mutate(visit_wo8 = case_when(visit == 8~9, TRUE~visit)) %>% 
+  mutate(visit_wo8 = as_factor(visit_wo8))
+
+metadata_complete <- metadata_complete%>%
+  mutate(baseline_ppfev1 = case_when(visit == 1 ~ pp_fev1))%>%
+  group_by(id)%>%
+  fill(baseline_ppfev1)%>%
+  mutate(delta_ppfev1 = pp_fev1-baseline_ppfev1)%>%
+  ungroup()
+
+metadata_complete %>% 
+  tabyl(id, visit)
+```
+
+```{r adjust metadata complete classes}
+metadata_complete <- metadata_complete %>% 
+  mutate(id=as_factor(id)) %>% 
+  mutate(visit=as_factor(visit)) %>% 
+  mutate(material=as_factor(material)) %>% 
+  mutate(visit=as_factor(visit))
+```
+
+# Figure
+```{r calculate dominant genus and add to data set}
+#Get top taxa per patient
+#find.top.taxa2 is sourced from functions.R
+ps_full <- ps_resp_rel# to make loading of the function possible I have to rename the ps
+source("/Users/rebecca/Documents/Forschung/IMMProveCF/R_analysis/IMMProveCF/functions_full.R")
+
+ps_full_sputum_glom <- tax_glom(ps_resp_rel, taxrank = "genus")
+
+top.sputum<- find.top.taxa2(ps_full_sputum_glom, "genus",1)
+top.sputum$Species<- NULL
+
+rslt <- top.sputum[, "taxa"]
+dd <- matrix(unlist(rslt), nrow=1)
+colnames(dd) <- rownames(top.sputum)
+top.sputum <- t(dd)
+
+top.sputum_df <- data.frame(grouping = row.names(top.sputum), top.sputum)%>%
+  mutate(grouping= substr(grouping, start = 3, stop = nchar(grouping)))  %>%
+  mutate(dominantGenus = top.sputum)
+top.sputum_df$top.sputum<- NULL
+
+##Add dominant Genus to ps_full_sputum_glom sample data
+ps_resp_rel<- microViz::ps_join(ps_resp_rel, top.sputum_df, by = "grouping")
+
+top.sputum_df$grouping
+sample_data(ps_resp_rel)$grouping
+sample_data(ps_resp_rel)$dominantGenus
+```
+
+```{r}
+my_colors_id <- c("#C03728FF", "#919C4CFF", "#FD8F24FF", "#F5C04AFF", "#E68C7CFF", "#C3C377FF", "#4F5157FF" ,"#6F5438FF")
+
+p1 <- metadata_complete %>%
+  filter(pp_fev1 > 5) %>%
+  ggplot(aes(x=visit, y=delta_ppfev1)) +
+  theme_minimal()+
+  geom_point(aes(color = as_factor(id)), size=2.5) +
+  geom_line(aes(x = visit, group = as_factor(id), color = as_factor(id),alpha=0.7), size=3) +
+  geom_boxplot(aes(alpha=0.7), outlier.colour = NA) +
+  ylab("Delta ppFEV1 [%] from baseline")+
+   theme(text = element_text(size=16), legend.position = "none") +
+  #ggtitle("Lung Function")+
+  scale_color_manual(name = "id", values = my_colors_id) 
+p1
+# Inflammation 
+p2 <- metadata_complete%>%
+  filter(visit %in% c("1","2","3","4","5")) %>%
+  ggplot(aes(x=visit, y= il1beta)) +
+  theme_minimal()+
+  geom_point(aes(color = as_factor(id)), size=2.5) +
+  geom_line(aes(x = visit, group = as_factor(id), color = as_factor(id),alpha=0.7), size=3) +
+  geom_boxplot(aes(alpha=0.7), outlier.colour = NA) +
+  ylab("IL-1ß in sputum [pg/ml]")+
+  theme(text = element_text(size=16), legend.position = "none") +
+  scale_color_manual(name = "id", values = my_colors_id)+
+  scale_y_log10()
+p2
+
+p3 <- metadata_complete%>%
+  filter(visit %in% c("1","2","3","4","5")) %>%
+  ggplot(aes(x=visit, y= il8)) +
+  theme_minimal()+
+  geom_point(aes(color = as_factor(id)), size=2.5) +
+  geom_line(aes(x = visit, group = as_factor(id), color = as_factor(id),alpha=0.7), size=3) +
+  geom_boxplot(aes(alpha=0.7), outlier.colour = NA) +
+  ylab("IL-8 in sputum [pg/ml]")+
+  theme(text = element_text(size=16), legend.position = "none") +
+  scale_color_manual(name = "id", values = my_colors_id)+
+  scale_y_log10()
+p3
+
+```
+
+```{r}
+
+ps_paired <- subset_samples(ps_resp_rel, id%in%sample_data(ps_orkambi_sputum)$id)
+ps_paired <- subset_samples(ps_paired, id%in%sample_data(ps_orkambi_throat)$id)
+set.seed(100)
+BC_dist<- phyloseq::distance(ps_paired,
+                             method="bray", weighted=F)
+#extract metadata
+metadata<- as(sample_data(ps_paired),"data.frame")
+
+#vegan::adonis2(BC_dist ~ material + visit + id,
+              #permutations = 999, na.action=na.exclude, data = metadata)
+
+# margin
+v1 <- vegan::adonis2(BC_dist ~ material + visit + id + dominantGenus,
+              permutations = 999, na.action=na.exclude, data = metadata, by="margin")
+
+# plot PERMANOVA as pie chart of variance explained
+
+v1_df <- clean_names(as_tibble(v1))
+v1_df$variable<-rownames(v1_df)
+variable_name <- c("sample type" , "sample time point" , "id" , "dominant genus", "residual", "Total")
+
+v1_df_paired <- v1_df%>%
+  mutate(variable=variable_name) %>% 
+  mutate(comparison = "paired throat and sputum samples")
+
+v1_df <- v1_df%>%
+  mutate(variable=variable_name) %>% 
+  mutate(p = case_when(variable=="residual" ~ 0.049, variable=="Total" ~ 0.051, TRUE~pr_f))
+
+# plot R2 only of variables that have a p < 0.05
+
+label_name <- c("sample type", "sample time point", "id", "dominant genus", "residual")
+fill_values <- c("#FF5733", "#41EAD4", "#FFD700", "#919C4CFF", "#BAB0ACFF")
+
+p4 <- v1_df %>%
+  mutate(percent = r2 * 100) %>%
+  mutate(text_y = cumsum(percent) - percent/2) %>%
+  filter(p <= 0.05) %>%
+  ggplot(aes(x = "", y = percent, fill = fct_inorder(variable))) +
+  geom_col(width = 1, color = 1, alpha = 0.7) +
+  coord_polar(theta = "y") +
+  scale_fill_manual(values = fill_values, breaks = label_name, labels = label_name) +
+  theme_void() +
+  theme(legend.position = "bottom", text = element_text(size = 16)) +
+  geom_text(aes(label = paste0(round(percent, 1), "%")),
+            position = position_stack(vjust = 0.5),
+            size = 6) +  # Adjust the size here
+  guides(fill = guide_legend(title = "", nrow=2, byrow=TRUE, title.position = "top"))+
+  ggtitle("Variance explained in \npaired samples by")
+p4
+
+p4 <- v1_df %>%
+  mutate(percent = r2 * 100) %>%
+  mutate(text_y = cumsum(percent) - percent/2) %>%
+  filter(p <= 0.05) %>%
+  #filter(variable!="residual") %>% 
+  ggplot(aes(x = fct_inorder(variable), y = percent, fill = fct_inorder(variable))) +  # Change x aesthetic to variable
+  geom_col(width = 0.7, color = "black", alpha = 0.7) +  # Use geom_col to create bars
+  scale_fill_manual(values = fill_values, breaks = label_name, labels = label_name) +
+  theme_minimal() +  # Change theme to minimal
+  theme(legend.position = "none", text = element_text(size = 16)) +
+  geom_text(aes(label = paste0(round(percent, 1), "%")),
+            position = position_stack(vjust = 0.5),
+            size = 4,  # Adjust the size here
+            color = "black") +  # Set text color
+  labs(x = "", y = "% of variance explained \nin paired samples", fill = "") +  # Remove axis labels and fill legend title
+  coord_flip() +  # Flip the coordinates for horizontal bars
+  #guides(fill = guide_legend(title = "", nrow=2, byrow=TRUE, title.position = "top"))+
+  ggtitle("PERMANOVA results")+  # Title
+  scale_x_discrete(labels = c("sample\ntype",  "id", "dominant\ngenus", "residual","visit"))
+
+p4
+
+```
+# PERMANOVA on unpaired samples
+```{r}
+# Sputum samples
+ps_sputum_rel <- subset_samples(ps_resp_rel, material == "Sputum")
+set.seed(100)
+BC_dist<- phyloseq::distance(ps_sputum_rel,
+                             method="bray", weighted=F)
+#extract metadata
+metadata<- as(sample_data(ps_sputum_rel),"data.frame")
+
+#vegan::adonis2(BC_dist ~ material + visit + id,
+              #permutations = 999, na.action=na.exclude, data = metadata)
+
+# margin
+v1 <- vegan::adonis2(BC_dist ~ visit + id + dominantGenus,
+              permutations = 999, na.action=na.exclude, data = metadata, strata = metadata$id, by="margin")
+
+# plot PERMANOVA as pie chart of variance explained
+
+v1_df <- clean_names(as_tibble(v1))
+v1_df$variable<-rownames(v1_df)
+variable_name <- c("sample type" , "sample time point" , "id" , "residual", "Total")
+v1_df_sputum <- v1_df%>%
+  mutate(variable=variable_name) %>% 
+  mutate(comparison = "sputum samples")
+
+
+### throat samples
+ps_throat_rel <- subset_samples(ps_resp_rel, material == "Throat")
+set.seed(100)
+
+BC_dist<- phyloseq::distance(ps_throat_rel,
+                             method="bray", weighted=F)
+#extract metadata
+metadata<- as(sample_data(ps_throat_rel),"data.frame")
+
+# margin
+v1 <- vegan::adonis2(BC_dist ~ visit + id + dominantGenus,
+              permutations = 999, na.action=na.exclude, data = metadata, strata = metadata$id, by="margin")
+
+# plot PERMANOVA as pie chart of variance explained
+
+v1_df <- clean_names(as_tibble(v1))
+v1_df$variable<-rownames(v1_df)
+variable_name <- c("sample type" , "sample time point" , "id" , "residual", "Total")
+v1_df_throat <- v1_df%>%
+  mutate(variable=variable_name) %>% 
+  mutate(comparison = "throat samples")
+
+v1_df_all <- rbind(v1_df_paired, v1_df_sputum, v1_df_throat)
+v1_df_all <- v1_df_all %>% 
+  select(comparison, variable, everything())
+
+write_csv(v1_df_all, "/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/Suppl_tables/st6_permanova.csv")
+```
+
+
+```{r}
+
+
+metadata <- as(sample_data(ps_resp_rel), "data.frame")
+
+metadata <- metadata%>% 
+  mutate(id_visit=paste(id, visit, sep="_"))
+
+tabyl(metadata, dominantGenus, id)
+
+ps_resp_rel <- ps_join(ps_resp_rel, metadata)
+
+plot_ord_data_resp <- ordinate(ps_resp_rel, "NMDS", "bray")
+p5 <- plot_ordination(ps_resp_rel, plot_ord_data_resp)+
+  geom_point(aes(color=id, shape=material), size = 4.5)+
+  geom_line(aes(group=id_visit,color=id), size=1.5, alpha=0.6)+
+  scale_colour_manual(values = my_colors_id) +
+  guides(fill = FALSE, color=FALSE)+
+  theme_minimal()+
+  ggtitle("Respiratory beta-diversity")+
+  theme(text = element_text(size=16), legend.position = "bottom",legend.title = element_blank())+ 
+  stat_ellipse(geom = "polygon",
+               aes(fill = dominantGenus), 
+               alpha = 0.15)+
+  annotate("text", label = "Streptococcus",
+    x = -0.3, y = 1.4, size = 6, colour = "red")+
+  annotate("text", label = "Staphylococcus",
+    x = 1.5, y = 0.6, size = 6, colour = "purple")+
+  annotate("text", label = "Neisseria",
+    x = -1.2, y = 0.1, size = 6, colour = "turquoise")+
+  annotate("text", label = "Haemophilus",
+    x = 0.2, y = -1.1, size = 6, colour = "darkgreen")
+p5
+```
+
+```{r, fig.height=10, fig.width=15}
+library(gridExtra)
+# Arrange the ggplot objects in a grid
+grid_arranged <- grid.arrange(
+  p1 + labs(tag = "A") + theme(legend.margin = margin(0, 0, 0, 0), legend.box.spacing = unit(0, units = "pt"), legend.box.margin = margin(0, 0, 0, 0)),
+  p2 + labs(tag = "B"),
+  p3 + labs(tag = "C"),
+  p4 + labs(tag = "E"),
+  p5 + labs(tag = "D"),
+  ncol = 4, nrow = 2,
+  heights = c(1, 1.5),
+  widths= c(1,1,1.2,1.2),
+  layout_matrix = rbind(c(1, 1, 2, 3),
+                        c(5, 5, 5, 4)
+))
+
+# Print or save the arranged plot
+print(grid_arranged)
+
+ggsave(plot = grid_arranged,"~/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/resp_fig.png",dpi = 600, width = 15, height = 12)
+```
+
+# Statistics
+```{r}
+library(dplyr)
+library(lmerTest)
+
+# as we do not have visit 6 and 8 blood measurements, I exclude those from the metadata:
+
+lm_stats_function <- function(data, variable_of_interest, label) {
+  lm <- summary(lmerTest::lmer({{ variable_of_interest }} ~ visit + sex + age + (1|id), data = data))
+
+  coefs <- data.frame(coef(lm))
+  fdr <- p.adjust(coefs$Pr...t.., method = "fdr", n = nrow(coefs))
+
+  lm_stats <- bind_cols(coefs, fdr) %>%
+    mutate(p = Pr...t..) %>%
+    mutate(fdr = ...6) %>%
+    select(-c(Pr...t.., ...6)) %>%
+    rownames_to_column() %>%
+    mutate(Months_after_ETI_start = rowname) %>%
+    mutate(Months_after_ETI_start = case_when(
+      Months_after_ETI_start == "(Intercept)" ~ "Baseline (Intercept)",
+      Months_after_ETI_start == "visit2" ~ "3",
+      Months_after_ETI_start == "visit3" ~ "6",
+      Months_after_ETI_start == "visit4" ~ "9",
+      Months_after_ETI_start == "visit5" ~ "12",
+      Months_after_ETI_start == "visit6" ~ "15",
+      Months_after_ETI_start == "visit7" ~ "18",
+      Months_after_ETI_start == "visit8" ~ "21",
+      Months_after_ETI_start == "visit9" ~ "24",
+      Months_after_ETI_start == "sex" ~ "sex",
+      Months_after_ETI_start == "age" ~ "age_y"
+    )) %>%
+    mutate(fdr_star = case_when(
+      fdr <= 0.001 ~ "***",
+      fdr <= 0.01 ~ "**",
+      fdr <= 0.05 ~ "*",
+      fdr <= 0.1 ~ ".",
+      fdr >= 0.1 ~ "ns"
+    )) %>%
+    select(-rowname) %>%
+    select(Months_after_ETI_start, Estimate, Std..Error, df, t.value, p, fdr, fdr_star) %>%
+    mutate(p = round(p, 5)) %>%
+    mutate(fdr = round(fdr, 5))
+
+
+# Print lm stats into data frame and add N of observations
+  nobs_per_visit <- data %>%
+    filter(!is.na({{ variable_of_interest }})) %>% 
+    group_by(visit) %>%
+    summarise(N_obs = n()) %>% 
+    mutate(Months_after_ETI_start = case_when(
+      visit == "1" ~ "Baseline (Intercept)",
+      visit == "2" ~ "3",
+      visit == "3" ~ "6",
+      visit == "4" ~ "9",
+      visit == "5" ~ "12",
+      visit == "6" ~ "15",
+      visit == "7" ~ "18",
+      visit == "8" ~ "21",
+      visit == "9" ~ "24"
+    )) %>% 
+    mutate(Total_N_obs = sum(N_obs)) %>% 
+    select(-visit)
+
+  # Merge the two data frames
+  lmm <- left_join(lm_stats, nobs_per_visit, by = "Months_after_ETI_start") 
+  lmm$variable <-  label # Add variable of interest to dataframe
+  lmm <- lmm %>% 
+    select(variable, everything())
+  return(lmm)
+}
+
+# Usage
+fev_stats <- lm_stats_function(metadata_complete, metadata_complete$pp_fev1, "ppFEV1")
+fev_stats
+
+fvc_stats <- lm_stats_function(metadata_complete, metadata_complete$pp_fvc, "ppFVC")
+fvc_stats
+
+il1b_stats <- lm_stats_function(metadata_complete, metadata_complete$il1beta, "IL-1ß in sputum")
+il1b_stats
+
+il8_stats <- lm_stats_function(metadata_complete, metadata_complete$il8, "IL-8 in sputum")
+il8_stats
+
+il6_stats <- lm_stats_function(metadata_complete, metadata_complete$il6, "IL-6 in sputum")
+il6_stats
+
+ne_stats <- lm_stats_function(metadata_complete, metadata_complete$ne, "Neutrophile elastase in sputum")
+ne_stats
+
+# combine stats table
+resp_stats <- rbind(fev_stats, fvc_stats, il1b_stats, il8_stats, il6_stats, ne_stats)
+
+write_csv(resp_stats, "/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/Suppl_tables/st5_resp_responses_stats.csv")
+
+```
+
+# Supplementary figure 1
+```{r}
+p7 <- plot_richness(ps_resp, x = "visit", measures = c("Shannon")) +
+  theme_minimal() +
+  geom_point(aes(color = as_factor(id)), size=2.5) +
+  geom_line(aes(x = visit, group = as_factor(id), color = as_factor(id),alpha=0.7), size=3) +
+  geom_boxplot(aes(alpha=0.7), outlier.colour = NA) +
+  scale_colour_manual(values = my_colors_id) +
+  ylab("Shannon Index") +
+  guides(color = guide_legend(nrow=1, byrow=TRUE,override.aes = list(shape = 3)), alpha = "none") +  # Remove alpha legend
+  theme(text = element_text(size = 16), legend.position = "bottom", strip.background = element_blank()) + # Remove the gray bar and facet labels
+  ggtitle("Respiratory alpha-diversity") +
+  facet_grid(~material) +
+  labs(color = "id")  # Set legend title to "id"
+
+p7
+
+ggsave("~/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/suppFig1_respir_diversity.png",p7,dpi = 300, width = 8, height = 5)
+```
+
+# correlation analysis
+```{r, fig.height=3, fig.width=9}
+sp1 <- metadata_complete %>% 
+  ggplot(aes(ig_g, pp_fev1))+
+  geom_point(aes(color = id), size=2.5) +
+  theme_minimal() +
+  scale_colour_manual(values = my_colors_id) +
+  geom_smooth(method = "lm", color="black", alpha=0.3)+
+  ylab("ppFEV1 [%]")+
+  xlab("IgG [g/l]")+
+  annotate("text", label = "Marginal R2 = 0.251\n  Conditional R2 = 0.867\np=0.005",
+    x = 12, y = 145, size = 3, colour = "black")
+ sp 
+ 
+ sp2 <- metadata_complete %>% 
+  ggplot(aes(bmi_zscore, pp_fev1))+
+  geom_point(aes(color = id), size=2.5) +
+  theme_minimal() +
+  scale_colour_manual(values = my_colors_id) +
+  geom_smooth(method = "lm", color="black", alpha=0.3)+
+  ylab("ppFEV1 [%]")+
+  xlab("BMI Z-score")+
+  annotate("text", label = "Marginal R2 = 0.149\n  Conditional R2 = 0.819\np=0.029",
+    x = -1, y = 145, size = 3, colour = "black")
+ sp2 
+ 
+ sp3 <- metadata_complete %>% 
+  ggplot(aes(ig_g, calprotectin))+
+  geom_point(aes(color = id), size=2.5) +
+  theme_minimal() +
+  scale_colour_manual(values = my_colors_id) +
+  geom_smooth(method = "lm", color="black", alpha=0.3)+
+  ylab("Calprotectin [µg/g] in stool")+
+  xlab("IgG [g/l]")+
+   scale_y_log10()+
+   guides(color = guide_legend(title = "id", nrow=1, byrow=TRUE, title.position = "left"))+
+  annotate("text", label = "Marginal R2 = 0.229\n  Conditional R2 = 0.388\np=0.009",
+    x = 8, y = 1400, size = 3, colour = "black")
+ sp3
+
+sp_all<- ggarrange(sp1,sp2,sp3, ncol = 3, legend.grob = get_legend(sp3), labels = c("A","B","C"))
+ 
+ggsave("~/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/suppFig2_corIgGppFev1.png",sp_all,dpi = 300, width = 10, height = 4)
+
+summary(lmerTest::lmer(pp_fev1~ig_g+visit+(1|id), data=metadata_complete))
+summary(lmerTest::lmer(pp_fev1~ig_g+(1|id), data=metadata_complete))
+
+library(sjPlot)
+tab_model(lmerTest::lmer(pp_fev1~ig_g+(1|id), data=metadata_complete))
+
+summary(lmerTest::lmer(pp_fev1~bmi_zscore+(1|id), data=metadata_complete))
+tab_model(lmerTest::lmer(pp_fev1~bmi_zscore+(1|id), data=metadata_complete))
+
+summary(lmerTest::lmer(calprotectin~ig_g+(1|id), data=metadata_complete))
+tab_model(lmerTest::lmer(calprotectin~ig_g+(1|id), data=metadata_complete))
+
+view(metadata_complete$)
+```
+

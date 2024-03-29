@@ -25,9 +25,7 @@ ps_orkambi_work_rel <- readRDS("~/Documents/Forschung/Orkambi_Kids/Paper/DeepPhe
 
 ```
 
-    
 ### Preprocessing    
-
 ```{r prepare metadata, include=FALSE}
 Metadata_filt_2_1_9 <- data.frame(sample_data(ps_orkambi_work))
 Metadata_filt_2_1_9$total_reads <- sample_sums(ps_orkambi_work)
@@ -887,6 +885,7 @@ my_comp5 <- list(c("1","2"), c("1","5"))
 
 # Figure 1 systemic responses
 ```{r systemic responses}
+my_colors_id <- c("#C03728FF", "#919C4CFF", "#FD8F24FF", "#F5C04AFF", "#E68C7CFF", "#C3C377FF", "#4F5157FF" ,"#6F5438FF")
 # sweat chloride
 p1 <- metadata_complete %>%
   filter(visit%in% c("1","2","5")) %>% 
@@ -896,11 +895,12 @@ p1 <- metadata_complete %>%
   geom_line(aes(x = visit, group = id, color = id, alpha=0.7), size=3) +
   geom_point(aes(x = visit, color = id), size=2.5) +
   ylab("Sweat chloride (mmol/l)")+
-  theme(text = element_text(size=16), legend.position = "left") +
+  theme(text = element_text(size=16), legend.position = "left",legend.margin = margin(50, 50, 50, 50)) +
   guides(alpha = FALSE)+
-  scale_color_manual(name = "id", values = my_colors_id) +
-  stat_compare_means(comparisons = )
+  scale_color_manual(name = "id", values = my_colors_id) #+
+  #stat_compare_means(comparisons = )
 p1
+
 # Inflammation 
 p2 <- metadata_complete%>%
   filter(visit!="6") %>% 
@@ -922,7 +922,7 @@ p3 <- metadata_complete%>%
   geom_boxplot(aes(alpha=0.7)) +
   geom_line(aes(x = visit_wo8, group = id, color = id,alpha=0.7), size=3) +
   geom_point(aes(x = visit_wo8, color = id), size=2.5) +
-  ylab("Leucocytes in serum /nl")+
+  ylab("Leucocytes /nl")+
   xlab("visit")+
   theme(text = element_text(size=16), legend.position = "none") +
   scale_color_manual(name = "id", values = my_colors_id)+
@@ -956,7 +956,7 @@ p5 <- p5+
 library(gridExtra)
 # Arrange the ggplot objects in a grid
 grid_arranged <- grid.arrange(
-  p1 + labs(tag = "A") + theme(legend.margin = margin(0, 0, 0, 0), legend.box.spacing = unit(0, units = "pt"), legend.box.margin = margin(0, 0, 0, 0)),
+  p1 + labs(tag = "A") + theme(legend.margin = margin(25, 25, 25, 25), legend.box.spacing = unit(0, units = "pt"), legend.box.margin = margin(0, 0, 0, 0)),
   p2 + labs(tag = "B"),
   p3 + labs(tag = "C"),
   p4 + labs(tag = "D"),
@@ -1222,10 +1222,80 @@ ggplot(metadata_complete, aes(x = visit_wo8, y = ig_g, group = id, color = as.fa
 # Some statistics
 ```{r Patients characteristics}
 install.packages("lmerTest")
+
+lm <- summary(lmerTest::lmer(leukos~ visit + sex + age+ (1|id), data=metadata_complete))
+
+  coefs <- data.frame(coef(lm))
+  fdr <- p.adjust(coefs$Pr...t.., method = "fdr", n = nrow(coefs))
+  
+  lm_stats <- bind_cols(coefs, fdr)%>%
+    mutate(p = Pr...t..)%>%
+    mutate(fdr = ...6)%>%
+    select(-c(Pr...t.., ...6))%>%
+    rownames_to_column()%>%
+    mutate(Months_after_ETI_start=rowname)%>%
+    mutate(Months_after_ETI_start= case_when(Months_after_ETI_start=="(Intercept)"~"Baseline (Intercept)", Months_after_ETI_start=="visit_cal_92"~"3", Months_after_ETI_start=="visit_cal_93"~"6",Months_after_ETI_start=="visit_cal_94"~"9",Months_after_ETI_start=="visit_cal_95"~"12",Months_after_ETI_start=="visit_cal_96"~"15",Months_after_ETI_start=="visit_cal_97"~"18",Months_after_ETI_start=="visit_cal_98"~"21",Months_after_ETI_start=="visit_cal_99"~"24", Months_after_ETI_start=="sex2"~"sex", Months_after_ETI_start=="age_y"~"age_y"))%>%
+    mutate(fdr_star = case_when(fdr<=0.001 ~ "***", fdr<=0.01 ~ "**", fdr<=0.05 ~ "*",fdr<=0.1 ~ ".",fdr>=0.1 ~ "ns"))%>%
+    select(-rowname)%>%
+    select(Months_after_ETI_start, Estimate, Std..Error, df, t.value, p, fdr, fdr_star)%>%
+    mutate(p=round(p,5))%>%
+    mutate(fdr=round(fdr, 5))
+
+lm_stats
+
+# print lm stats into data frame and add N of observations
+
+# print lm stats into data frame and add N of observations
+nobs_per_visit <- full_metadata_distinct %>%
+  filter(!is.na(leukozyten_nl)) %>% 
+  group_by(visit_cal_9) %>%
+  summarise(N_obs = n()) %>% 
+  mutate(Months_after_ETI_start= case_when(visit_cal_9=="1"~"Baseline (Intercept)", visit_cal_9=="2"~"3", visit_cal_9=="3"~"6",visit_cal_9=="4"~"9",visit_cal_9=="5"~"12",visit_cal_9=="6"~"15",visit_cal_9=="7"~"18",visit_cal_9=="8"~"21",visit_cal_9=="9"~"24"))%>% 
+  mutate(Total_N_obs = sum(N_obs)) 
+
+# Merge the two data frames
+lmm_leukos <- left_join(lm_stats, nobs_per_visit, by = "Months_after_ETI_start") 
+# Fill NAs in N_obs with the resulting rowsum of N_obs
+lmm_leukos$N_obs <- replace_na(lmm_leukos$N_obs, lmm_leukos$Total_N_obs[1])
+
+lmm_leukos <- lmm_leukos %>% 
+  mutate(Parameter = "Leukocytes (/nl)") %>% 
+  select(Parameter, Months_after_ETI_start, N_obs, Total_N_obs, everything()) %>% 
+  select(-visit_cal_9)
+
+# to make the significant asterixes printable on the plot I have to adjust the table a little
+group1 <- c("(Intercept)","1","1","1","1","1","1","1","1","1","1")
+  
+lm_stats <-  lm_stats%>%
+    bind_cols(group1)%>%
+    mutate(group1=...9)%>%
+  mutate(group2=case_when(Months_after_ETI_start=="3"~ "2", Months_after_ETI_start=="6"~ "3", Months_after_ETI_start=="9"~ "4",Months_after_ETI_start=="12"~ "5", Months_after_ETI_start=="15"~ "6", Months_after_ETI_start=="18"~ "7",Months_after_ETI_start=="21"~ "8", Months_after_ETI_start=="24"~ "9"))%>%
+  filter(group1!="(Intercept)") %>% 
+  filter(!is.na(group2))
+
+leucos<- full_metadata_distinct%>%
+    ggplot(aes(y=leukozyten_nl, x=visit_cal_9))+
+     geom_boxplot(aes(fill=visit_cal_9), outlier.shape = NA, alpha=0.7)+
+    geom_point(color="black", alpha=0.7, width = 0.1)+
+    scale_fill_manual(values=visit_palette)+
+    geom_line(aes(group=id, alpha=0.7))+
+    theme_classic()+
+    theme_classic()+
+    ylab("Leucocytes (/nl)")+
+    xlab("Months from ETI treatment start")+
+    scale_y_continuous(trans=scales::pseudo_log_trans(base = 10), breaks = c(1,10,50,100,300))+
+    scale_x_discrete(labels= xlabels)+
+    theme(text=element_text(size = 14), legend.position = "none")+
+    #guides(fill='none') +
+   stat_pvalue_manual(lm_stats, label = "fdr_star",y.position = 1.4, step.increase = 0.05)
+leucos
+
 summary(lmerTest::lmer(ig_g ~ visit + (1|id), data=metadata_complete))
 summary(lmerTest::lmer(leukos ~ visit + (1|id), data=metadata_complete))
 summary(lmerTest::lmer(pp_fev1 ~ visit + (1|id), data=metadata_complete))
 summary(lmerTest::lmer(lci~ visit + (1|id), data=metadata_complete))
+
+view(metadata)
 ```
 
 ```{r session info}
