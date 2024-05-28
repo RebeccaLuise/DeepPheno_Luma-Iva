@@ -342,11 +342,11 @@ p5
 library(gridExtra)
 # Arrange the ggplot objects in a grid
 grid_arranged <- grid.arrange(
-  p1 + labs(tag = "A") + theme(legend.margin = margin(0, 0, 0, 0), legend.box.spacing = unit(0, units = "pt"), legend.box.margin = margin(0, 0, 0, 0)),
-  p2 + labs(tag = "B"),
-  p3 + labs(tag = "C"),
-  p4 + labs(tag = "E"),
-  p5 + labs(tag = "D"),
+  p1 + labs(tag = "a") + theme(legend.margin = margin(0, 0, 0, 0), legend.box.spacing = unit(0, units = "pt"), legend.box.margin = margin(0, 0, 0, 0)),
+  p2 + labs(tag = "b"),
+  p3 + labs(tag = "c"),
+  p4 + labs(tag = "e"),
+  p5 + labs(tag = "d"),
   ncol = 4, nrow = 2,
   heights = c(1, 1.5),
   widths= c(1,1,1.2,1.2),
@@ -357,7 +357,7 @@ grid_arranged <- grid.arrange(
 # Print or save the arranged plot
 print(grid_arranged)
 
-ggsave(plot = grid_arranged,"~/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/resp_fig.png",dpi = 600, width = 15, height = 12)
+ggsave(plot = grid_arranged,"~/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/resp_fig.pdf",dpi = 600, width = 15, height = 12)
 ```
 
 # Statistics
