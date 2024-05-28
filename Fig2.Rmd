@@ -165,11 +165,11 @@ grid.arrange(legend)
 # Arrange the ggplot objects in a grid
 grid_arranged <- grid.arrange(
   legend,
-  p1 + labs(tag = "A") + theme(legend.position = "none"), #margin = margin(25, 25, 25, 25), legend.box.spacing = unit(0, units = "pt"), legend.box.margin = margin(0, 0, 0, 0)
-  p2 + labs(tag = "B"),
-  p3 + labs(tag = "C"),
-  p4 + labs(tag = "D"),
-  p5 + labs(tag = "E"),
+  p1 + labs(tag = "a") + theme(legend.position = "none"), #margin = margin(25, 25, 25, 25), legend.box.spacing = unit(0, units = "pt"), legend.box.margin = margin(0, 0, 0, 0)
+  p2 + labs(tag = "b"),
+  p3 + labs(tag = "c"),
+  p4 + labs(tag = "d"),
+  p5 + labs(tag = "e"),
   ncol = 5, nrow = 2,
   widths = c(0.3, 0.2, 0.2, 0.2,0.2),
   layout_matrix = rbind(c(1, 3, 3, 4, 4),
@@ -179,7 +179,7 @@ grid_arranged <- grid.arrange(
 # Print or save the arranged plot
 print(grid_arranged)
 
-ggsave(plot=grid_arranged, "~/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/system_fig.png",dpi = 600, width = 12, height = 8)
+ggsave(plot=grid_arranged, "~/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/system_fig.pdf",dpi = 600, width = 12, height = 8)
 
 ```
 

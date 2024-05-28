@@ -116,7 +116,7 @@ p2 <- metadata_complete%>%
   geom_point(aes(color = as_factor(id)), size=2.5) +
   geom_line(aes(x = visit, group = as_factor(id), color = as_factor(id),alpha=0.7), size=3) +
   geom_boxplot(aes(alpha=0.7), outlier.colour = NA) +
-  ylab("Calprotectin [µg/g] in stool")+
+  ylab("Fecal calprotectin [µg/g]")+
   theme(text = element_text(size=16), legend.position = "none") +
   scale_color_manual(name = "id", values = my_colors_id) +
   scale_y_log10()
@@ -146,7 +146,7 @@ p4 <- metadata_complete%>%
   geom_line(aes(x = visit, group = as_factor(id), color = as_factor(id),alpha=0.7), size=3) +
   geom_boxplot(aes(alpha=0.7), outlier.colour = NA) +
   ylab("ALAT [U/I] in serum")+
-  xlab("visit_wo8")+
+  xlab("visit")+
   theme(text = element_text(size=16), legend.position = "none") +
   scale_color_manual(name = "id", values = my_colors_id)+
   scale_y_log10()
@@ -178,12 +178,12 @@ p6
 library(gridExtra)
 # Arrange the ggplot objects in a grid
 grid_arranged <- grid.arrange(
-  p1 + labs(tag = "A") + theme(legend.margin = margin(0, 0, 0, 0), legend.box.spacing = unit(0, units = "pt"), legend.box.margin = margin(0, 0, 0, 0)),
-  p3 + labs(tag = "B"),
-  p2 + labs(tag = "C"),
-  p4 + labs(tag = "D"),
-  p5 + labs(tag = "E"),
-  p6 + labs(tag = "F"),
+  p1 + labs(tag = "a") + theme(legend.margin = margin(0, 0, 0, 0), legend.box.spacing = unit(0, units = "pt"), legend.box.margin = margin(0, 0, 0, 0)),
+  p3 + labs(tag = "b"),
+  p2 + labs(tag = "c"),
+  p4 + labs(tag = "d"),
+  p5 + labs(tag = "e"),
+  p6 + labs(tag = "f"),
   ncol = 2, nrow = 3,
   widths = c(1.25, 1.15),
   layout_matrix = rbind(c(1, 2),

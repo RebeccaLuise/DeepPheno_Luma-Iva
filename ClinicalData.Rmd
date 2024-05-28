@@ -68,10 +68,10 @@ data_v9 <- data %>%
 ```{r Cohort characteristics at baseline}
 library(gtsummary)
 
-baseline <- data_v1 %>% select(sex, age, bmi_zscore, pp_fev1, pp_fvc)
+baseline <- data_v1 %>% select(sex, age, bmi_zscore, pp_fev1, pp_fvc, sweatchloride_mmol_l)
 b_table <- baseline %>% tbl_summary(type = c( age = "continuous", bmi_zscore = "continuous", pp_fev1= "continuous", pp_fvc= "continuous"),missing="no")
 
-baseline %>% tbl_summary(type = c( age = "continuous", bmi_zscore = "continuous", pp_fev1= "continuous", pp_fvc= "continuous"),missing="no")%>%
+baseline %>% tbl_summary(type = c( age = "continuous", bmi_zscore = "continuous", pp_fev1= "continuous", pp_fvc= "continuous", sweatchloride_mmol_l= "continuous"),missing="no")%>%
   as_gt() %>%
   gt::gtsave(filename = "baseline.docx")
 
@@ -80,14 +80,22 @@ summary(baseline$age)
 
 # Cohort characteristics follow-up
 ```{r Cohort characteristics fu}
-trial2 <- data %>% select(visit, sex, age, bmi_zscore, pp_fev1, pp_fvc)
+data <- data %>% 
+  mutate(throat_staphylococcus_aureus_bin = case_when(throat_staphylococcus_aureus==0~0, throat_staphylococcus_aureus==1~1, throat_staphylococcus_aureus==2~1)) %>% 
+    mutate(sputum_staphylococcus_aureus_bin = case_when(sputum_staphylococcus_aureus==0~0, sputum_staphylococcus_aureus==1~1, sputum_staphylococcus_aureus==2~1))
+
+trial2 <- data %>% select(visit, sex, age, bmi_zscore, pp_fev1, pp_fvc, sweatchloride_mmol_l, throat_staphylococcus_aureus_bin, sputum_staphylococcus_aureus_bin)
 
 summary(trial2$age)
 
-trial2%>% tbl_summary(by=visit, type = c( age = "continuous", bmi_zscore = "continuous", pp_fev1= "continuous", pp_fvc= "continuous"), missing="no")%>%
+trial2%>% tbl_summary(by=visit, type = c( age = "continuous", bmi_zscore = "continuous", pp_fev1= "continuous", pp_fvc= "continuous",sweatchloride_mmol_l= "continuous"), missing="ifany")%>%
   as_gt() %>%
   gt::gtsave(filename = "characteristics_allVisits.docx")
 
+
+trial2 %>% 
+  group_by(throat_staphylococcus_aureus_bin) %>% 
+  count(visit)
 ```
 
 ```{r overall statistics for all serum}
