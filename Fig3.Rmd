@@ -282,8 +282,6 @@ asat_stats
 alat_stats <- lm_stats_function(metadata_complete, metadata_complete$GPT, "ALAT [U/I]")
 alat_stats
 
-
-
 # combine stats table
 systemic_stats <- rbind(bmi_stats,cal_stats,asat_stats,alat_stats)
 
@@ -294,9 +292,44 @@ write_csv(systemic_stats, "/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper
 
 BC_dist <- phyloseq::distance(ps_orkambi_stool_rel, method = "bray")
 
-metadata <- as(sample_data(ps_orkambi_stool_rel), "data.frame")
+BC_df <- as.matrix(BC_dist)
+BC_df <- as.data.frame(BC_df)
+rownames(BC_df)
 
-vegan::adonis2(BC_dist ~ visit+id, by="margin", permutations = 999, strata = metadata$id, data = metadata) # stratified for id
+# filter metadata for data that matches the stool samples analyzed
+metadata<- metadata_complete %>% 
+  mutate(st_id = paste("19", substr(grouping, 1, 4), "St", sep = "")) %>% 
+  mutate(st_id= case_when(st_id == "19SAV1St"~ "19SAV1StA", T~st_id)) %>% 
+  filter(st_id %in% colnames(BC_df))
+
+vegan::adonis2(BC_dist ~ visit+id+pp_fev1, by="margin", permutations = 999, strata = metadata$id, data = metadata) # stratified for id
 vegan::adonis2(BC_dist ~ visit+id, by="margin", permutations = 999, data = metadata) # non-stratified
-vegan::adonis2(BC_dist ~ visit+id+pp_fev1, by="margin", permutations = 999, data = metadata,na.action=na.exclude)# non-stratified for id
+vegan::adonis2(BC_dist ~ visit+id+pp_fev1, by="margin", permutations = 999, data = metadata)# non-stratified for id
+vegan::adonis2(BC_dist ~ visit+id+pp_fev1, by="margin", permutations = 999, strata = metadata$id, data = metadata) # stratified for id
+
+# include antibiotic treatment in PERMANOVA
+
+
+vegan::adonis2(BC_dist ~ visit+id+pp_fev1+ab365vorher+ab15vorher, by="margin", permutations = 999, strata = metadata$id, data = metadata, na.action = na.exclude) # stratified for id
+
+vegan::adonis2(BC_dist ~ visit+id+pp_fev1+ab365vorher+ab15vorher, by="margin", permutations = 999,  data = metadata, na.action = na.exclude) # non-stratified for id
+
+## impact of antibiotic treatment days prior visit?
+metadata %>% 
+  ggplot(aes(y=ab365vorher, x=visit))+
+  geom_boxplot()+
+  geom_point(aes(color=id))+
+  scale_y_log10()
+
+metadata %>% 
+  ggplot(aes(y=ab15vorher, x=visit))+
+  geom_boxplot()+
+  geom_point(aes(color=id))+
+  scale_y_log10()
+
+antb_stats <- lm_stats_function(metadata_complete, metadata_complete$ab365vorher, "N atb tt days")
+antb_stats
+
+# ppfev1 and id are highly linked, thus when stratifying for id, ppfev1 seems to have a significant impact, but when not stratifiyng for id, id explains all of the variance and ppfev1 is not significant.
+
 ```

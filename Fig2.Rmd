@@ -31,6 +31,22 @@ Metadata_filt_2_1_9$total_reads <- sample_sums(ps_orkambi_work)
 
 metadata_unique <- Metadata_filt_2_1_9[!duplicated(Metadata_filt_2_1_9[ , c("probe_id")]), ]
 
+# check read count
+seq_quali <- Metadata_filt_2_1_9  %>% 
+  group_by(material) %>% 
+  summarise(N = n(),
+            min= min(total_reads),
+            max= max(total_reads),
+            iqr= IQR(total_reads),
+            median=median(total_reads))
+
+renv::install("writexl")
+writexl::write_xlsx(seq_quali, "/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/16S_seq_quality.xlsx")
+
+Metadata_filt_2_1_9  %>% 
+  ggplot(aes(y=total_reads, x=material))+
+  geom_boxplot()
+
 #write_csv(metadata_unique, "/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/metadata_raw.csv")
 # I have to add missing lung functions and sweat chlorides from id8, i do this directly in the generated csv and reload the file
 
@@ -282,5 +298,9 @@ systemic_stats <- rbind(sweat_stats, igg_stats, leuko_stats, bsg_stats, ige_stat
 
 write_csv(systemic_stats, "/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/Suppl_tables/st1_systemic_responses_stats.csv")
 
+```
+
+```{r}
+sessionInfo()
 ```
 

@@ -22,6 +22,8 @@ pacman::p_load(tidyverse, magrittr, janitor, microbiome, knitr, naniar, phyloseq
 ps_orkambi_work <- readRDS("~/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/data/ps_orkambi_trimmed.rds")
 ps_orkambi_work_rel <- readRDS("~/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/data/ps_orkambi_trimmed_relative.rds")
 
+sample_data(ps_orkambi_work_rel)$visit_id <- paste(sample_data(ps_orkambi_work_rel)$visit, sample_data(ps_orkambi_work_rel)$id, sep = "_")
+
 # sputum
 ps_orkambi_sputum <- subset_samples(ps_orkambi_work, material == "Sputum")
 ps_orkambi_sputum_rel <- subset_samples(ps_orkambi_work_rel, material == "Sputum")
@@ -41,6 +43,8 @@ Metadata_filt_2_1_9 <- data.frame(sample_data(ps_orkambi_work))
 Metadata_filt_2_1_9$total_reads <- sample_sums(ps_orkambi_work)
 
 metadata_unique <- Metadata_filt_2_1_9[!duplicated(Metadata_filt_2_1_9[ , c("probe_id")]), ]
+
+
 
 #write_csv(metadata_unique, "/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/metadata_raw.csv")
 # I have to add missing lung functions and sweat chlorides from id8, i do this directly in the generated csv and reload the file
@@ -172,8 +176,8 @@ p3
 
 ```{r}
 
-ps_paired <- subset_samples(ps_resp_rel, id%in%sample_data(ps_orkambi_sputum)$id)
-ps_paired <- subset_samples(ps_paired, id%in%sample_data(ps_orkambi_throat)$id)
+ps_paired <- subset_samples(ps_resp_rel, visit_id%in%sample_data(ps_orkambi_sputum_rel)$visit_id)
+ps_paired <- subset_samples(ps_paired, visit_id%in%sample_data(ps_orkambi_throat_rel)$visit_id)
 set.seed(100)
 BC_dist<- phyloseq::distance(ps_paired,
                              method="bray", weighted=F)
@@ -184,14 +188,17 @@ metadata<- as(sample_data(ps_paired),"data.frame")
               #permutations = 999, na.action=na.exclude, data = metadata)
 
 # margin
-v1 <- vegan::adonis2(BC_dist ~ material + visit + id + dominantGenus,
-              permutations = 999, na.action=na.exclude, data = metadata, by="margin")
+v1 <- vegan::adonis2(BC_dist ~ material + visit + id + dominantGenus+ pp_fev1+ ab365vorher+ab15vorher,
+              permutations = 999, na.action=na.exclude, data = metadata, by="margin", strata = metadata$id)
+
+v2 <- vegan::adonis2(BC_dist ~ material + visit + id + dominantGenus+pp_fev1+ab365vorher+ab15vorher,
+              permutations = 999, na.action=na.exclude, data = metadata, by="margin") # non-stratified for id
 
 # plot PERMANOVA as pie chart of variance explained
 
-v1_df <- clean_names(as_tibble(v1))
+v1_df <- clean_names(as_tibble(v1)) # I take the non-stratified for id, because it's important to highlight the impact of id 
 v1_df$variable<-rownames(v1_df)
-variable_name <- c("sample type" , "sample time point" , "id" , "dominant genus", "residual", "Total")
+variable_name <- c("sample type" , "sample time point" , "id" , "dominant genus", "pp_fev1", "ab365" , "ab15", "residual", "Total")
 
 v1_df_paired <- v1_df%>%
   mutate(variable=variable_name) %>% 
@@ -199,12 +206,13 @@ v1_df_paired <- v1_df%>%
 
 v1_df <- v1_df%>%
   mutate(variable=variable_name) %>% 
-  mutate(p = case_when(variable=="residual" ~ 0.049, variable=="Total" ~ 0.051, TRUE~pr_f))
+  mutate(p = case_when(variable=="residual" ~ 0.051, variable=="Total" ~ 0.051, TRUE~pr_f))
 
 # plot R2 only of variables that have a p < 0.05
 
-label_name <- c("sample type", "sample time point", "id", "dominant genus", "residual")
-fill_values <- c("#FF5733", "#41EAD4", "#FFD700", "#919C4CFF", "#BAB0ACFF")
+label_name <- c("sample type", "sample time point", "id", "dominant genus", "pp_fev1", "ab365" , "ab15", "residual")
+fill_values <- c("#FF5733", "#2E8B57", "#FFD700", "#919C4C", "#4682B4", "#D2691E", "#BAB0AC", "#41EAD4")
+
 
 p4 <- v1_df %>%
   mutate(percent = r2 * 100) %>%
@@ -223,26 +231,26 @@ p4 <- v1_df %>%
   ggtitle("Variance explained in \npaired samples by")
 p4
 
+
+
+library(forcats)
 p4 <- v1_df %>%
   mutate(percent = r2 * 100) %>%
-  mutate(text_y = cumsum(percent) - percent/2) %>%
+  mutate(text_y = cumsum(percent) - percent / 2) %>%
   filter(p <= 0.05) %>%
-  #filter(variable!="residual") %>% 
-  ggplot(aes(x = fct_inorder(variable), y = percent, fill = fct_inorder(variable))) +  # Change x aesthetic to variable
-  geom_col(width = 0.7, color = "black", alpha = 0.7) +  # Use geom_col to create bars
+  ggplot(aes(x = fct_reorder(variable, percent), y = percent, fill = fct_reorder(variable, percent))) +
+  geom_col(width = 0.7, color = "black", alpha = 0.7) +
   scale_fill_manual(values = fill_values, breaks = label_name, labels = label_name) +
-  theme_minimal() +  # Change theme to minimal
+  theme_minimal() +
   theme(legend.position = "none", text = element_text(size = 16)) +
   geom_text(aes(label = paste0(round(percent, 1), "%")),
             position = position_stack(vjust = 0.5),
-            size = 4,  # Adjust the size here
-            color = "black") +  # Set text color
-  labs(x = "", y = "% of variance explained \nin paired samples", fill = "") +  # Remove axis labels and fill legend title
-  coord_flip() +  # Flip the coordinates for horizontal bars
-  #guides(fill = guide_legend(title = "", nrow=2, byrow=TRUE, title.position = "top"))+
-  ggtitle("PERMANOVA results")+  # Title
-  scale_x_discrete(labels = c("sample\ntype",  "id", "dominant\ngenus", "residual","visit"))
-
+            size = 4,
+            color = "black") +
+  labs(x = "", y = "% of variance explained \nin paired samples", fill = "")+
+  coord_flip()+
+  ggtitle("PERMANOVA results")+
+  scale_x_discrete(labels= c("atb tt\n15d", "ppfev1", "sample\ntype", "id", "dominant\ngenus"))
 p4
 
 ```
@@ -254,20 +262,24 @@ set.seed(100)
 BC_dist<- phyloseq::distance(ps_sputum_rel,
                              method="bray", weighted=F)
 #extract metadata
-metadata<- as(sample_data(ps_sputum_rel),"data.frame")
+metadata <- as(sample_data(ps_sputum_rel),"data.frame")
 
 #vegan::adonis2(BC_dist ~ material + visit + id,
               #permutations = 999, na.action=na.exclude, data = metadata)
 
 # margin
-v1 <- vegan::adonis2(BC_dist ~ visit + id + dominantGenus,
+v1 <- vegan::adonis2(BC_dist ~ visit + id + dominantGenus+ pp_fev1+ ab365vorher +  ab15vorher,
               permutations = 999, na.action=na.exclude, data = metadata, strata = metadata$id, by="margin")
+
+# unstratified
+v2 <- vegan::adonis2(BC_dist ~ visit + id + dominantGenus+ pp_fev1+ ab365vorher + ab15vorher,
+              permutations = 999, na.action=na.exclude, data = metadata, by="margin")
 
 # plot PERMANOVA as pie chart of variance explained
 
 v1_df <- clean_names(as_tibble(v1))
 v1_df$variable<-rownames(v1_df)
-variable_name <- c("sample type" , "sample time point" , "id" , "residual", "Total")
+variable_name <- c("sample type" , "sample time point" , "id" , "dominant genus", "pp_fev1", "ab365" , "ab15", "residual", "Total")
 v1_df_sputum <- v1_df%>%
   mutate(variable=variable_name) %>% 
   mutate(comparison = "sputum samples")
@@ -279,18 +291,32 @@ set.seed(100)
 
 BC_dist<- phyloseq::distance(ps_throat_rel,
                              method="bray", weighted=F)
-#extract metadata
-metadata<- as(sample_data(ps_throat_rel),"data.frame")
+# extract metadata
+metadata_thr <- as(sample_data(ps_throat_rel),"data.frame") # somehow this metadata misses one lung function entry, I use therefore the metadata_complete and paste it with the throat metadata
+metadata_thr <-metadata_thr %>% 
+  select(probe_id, dominantGenus)
+BC_df <- as.matrix(BC_dist)
+BC_df <- as.data.frame(BC_df)
+rownames(BC_df)
+# filter metadata for data that matches the throat samples analyzed
+metadata <- metadata_complete %>% 
+  mutate(st_id = paste("19", substr(grouping, 1, 4), "Thr", sep = "")) %>% 
+  #mutate(st_id= case_when(st_id == "19SAV1St"~ "19SAV1StA", T~st_id)) %>% 
+  filter(st_id %in% colnames(BC_df)) %>% 
+  left_join(metadata_thr, by="probe_id")
 
 # margin
-v1 <- vegan::adonis2(BC_dist ~ visit + id + dominantGenus,
+v1 <- vegan::adonis2(BC_dist ~ visit + id + dominantGenus+ pp_fev1+ ab365vorher + ab15vorher,
               permutations = 999, na.action=na.exclude, data = metadata, strata = metadata$id, by="margin")
 
-# plot PERMANOVA as pie chart of variance explained
+# unstratified
+v2 <- vegan::adonis2(BC_dist ~ visit + id + dominantGenus+ ab365vorher + ab15vorher,
+              permutations = 999, na.action=na.exclude, data = metadata, by="margin")
 
+# bind tables
 v1_df <- clean_names(as_tibble(v1))
 v1_df$variable<-rownames(v1_df)
-variable_name <- c("sample type" , "sample time point" , "id" , "residual", "Total")
+variable_name <- c("sample type" , "sample time point" , "id" , "dominant genus", "pp_fev1", "ab365" , "ab15", "residual", "Total")
 v1_df_throat <- v1_df%>%
   mutate(variable=variable_name) %>% 
   mutate(comparison = "throat samples")
@@ -304,8 +330,6 @@ write_csv(v1_df_all, "/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/Supp
 
 
 ```{r}
-
-
 metadata <- as(sample_data(ps_resp_rel), "data.frame")
 
 metadata <- metadata%>% 
@@ -347,17 +371,17 @@ grid_arranged <- grid.arrange(
   p3 + labs(tag = "c"),
   p4 + labs(tag = "e"),
   p5 + labs(tag = "d"),
-  ncol = 4, nrow = 2,
+  ncol = 8, nrow = 2,
   heights = c(1, 1.5),
-  widths= c(1,1,1.2,1.2),
-  layout_matrix = rbind(c(1, 1, 2, 3),
-                        c(5, 5, 5, 4)
+  widths= c(1,1,1,1, 1.2,1.2, 1.2,1.2),
+  layout_matrix = rbind(c(1, 1, 1, 1, 2, 2, 3, 3),
+                        c(5, 5, 5, 5, 5, 4, 4, 4)
 ))
 
 # Print or save the arranged plot
 print(grid_arranged)
 
-ggsave(plot = grid_arranged,"~/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/resp_fig.pdf",dpi = 600, width = 15, height = 12)
+ggsave(plot = grid_arranged,"~/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/resp_fig.png",dpi = 600, width = 15, height = 12)
 ```
 
 # Statistics
@@ -490,7 +514,7 @@ sp1 <- metadata_complete %>%
   xlab("IgG [g/l]")+
   annotate("text", label = "Marginal R2 = 0.251\n  Conditional R2 = 0.867\np=0.005",
     x = 12, y = 145, size = 3, colour = "black")
- sp 
+ sp1
  
  sp2 <- metadata_complete %>% 
   ggplot(aes(bmi_zscore, pp_fev1))+
@@ -534,6 +558,4 @@ tab_model(lmerTest::lmer(pp_fev1~bmi_zscore+(1|id), data=metadata_complete))
 summary(lmerTest::lmer(calprotectin~ig_g+(1|id), data=metadata_complete))
 tab_model(lmerTest::lmer(calprotectin~ig_g+(1|id), data=metadata_complete))
 
-view(metadata_complete$)
 ```
-

@@ -16,6 +16,86 @@ output:
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
 ```
 
+# load lm function
+```{r}
+lm_stats_function <- function(data, variable_of_interest, label) {
+  lm <- summary(lmerTest::lmer({{ variable_of_interest }} ~ visit + sex + age + (1|id), data = data))
+
+  coefs <- data.frame(coef(lm))
+  fdr <- p.adjust(coefs$Pr...t.., method = "fdr", n = nrow(coefs))
+
+  lm_stats <- bind_cols(coefs, fdr) %>%
+    mutate(p = Pr...t..) %>%
+    mutate(fdr = ...6) %>%
+    select(-c(Pr...t.., ...6)) %>%
+    rownames_to_column() %>%
+    mutate(Months_after_LUMIVA_start = rowname) %>%
+    mutate(Months_after_LUMIVA_start = case_when(
+      Months_after_LUMIVA_start == "(Intercept)" ~ "Baseline (Intercept)",
+      Months_after_LUMIVA_start == "visit2" ~ "3",
+      Months_after_LUMIVA_start == "visit3" ~ "6",
+      Months_after_LUMIVA_start == "visit4" ~ "9",
+      Months_after_LUMIVA_start == "visit5" ~ "12",
+      Months_after_LUMIVA_start == "visit6" ~ "15",
+      Months_after_LUMIVA_start == "visit7" ~ "18",
+      Months_after_LUMIVA_start == "visit8" ~ "21",
+      Months_after_LUMIVA_start == "visit9" ~ "24",
+      Months_after_LUMIVA_start == "sex" ~ "sex",
+      Months_after_LUMIVA_start == "age" ~ "age_y"
+    )) %>%
+    mutate(fdr_star = case_when(
+      fdr <= 0.001 ~ "***",
+      fdr <= 0.01 ~ "**",
+      fdr <= 0.05 ~ "*",
+      fdr <= 0.1 ~ ".",
+      fdr >= 0.1 ~ "ns"
+    )) %>%
+    select(-rowname) %>%
+    select(Months_after_LUMIVA_start, Estimate, Std..Error, df, t.value, p, fdr, fdr_star) %>%
+    mutate(p = round(p, 5)) %>%
+    mutate(fdr = round(fdr, 5))
+
+
+# Print lm stats into data frame and add N of observations
+  nobs_per_visit <- data %>%
+    filter(!is.na({{ variable_of_interest }})) %>% 
+    group_by(visit) %>%
+    summarise(N_obs = n()) %>% 
+    mutate(Months_after_LUMIVA_start = case_when(
+      visit == "1" ~ "Baseline (Intercept)",
+      visit == "2" ~ "3",
+      visit == "3" ~ "6",
+      visit == "4" ~ "9",
+      visit == "5" ~ "12",
+      visit == "6" ~ "15",
+      visit == "7" ~ "18",
+      visit == "8" ~ "21",
+      visit == "9" ~ "24"
+    )) %>% 
+    mutate(Total_N_obs = sum(N_obs)) %>% 
+    select(-visit)
+
+  # Merge the two data frames
+  lmm <- left_join(lm_stats, nobs_per_visit, by = "Months_after_LUMIVA_start") 
+  lmm$variable <-  label # Add variable of interest to dataframe
+  lmm <- lmm %>% 
+    select(variable, everything())
+  return(lmm)
+}
+
+# somehow sex is missing in the metabolomic metadata, that's why I upload metadata to add it later on my metabolite_sig_df
+
+ps_orkambi_work <- readRDS("~/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/data/ps_orkambi_trimmed.rds")
+Metadata<- data.frame(sample_data(ps_orkambi_work))
+
+Metadata <- Metadata %>%
+  mutate(probe_id_trimmed = paste0(substr(probe_id, 1, 2), substr(probe_id, nchar(probe_id)-1, nchar(probe_id))))
+
+# select in  Metadata probe_id_trimmed and sex
+Metadata_sel <- Metadata %>% 
+  select(probe_id_trimmed, gender)
+```
+
 ```{r import data and packages, include=FALSE}
 #setwd("/Users/rebecca/Documents/Forschung/Orkambi_Kids/Metabolomics/R_data_analysis")
 #renv::activate()
@@ -1116,9 +1196,14 @@ p_trypto <- met_sig_df%>%
   theme(text = element_text(size=16), legend.position = "none")
 
 trypto_df <- met_sig_df%>%
-  filter(!is.na(id), visit!=6, OTU=="FT0152") 
+  left_join(Metadata_sel, by= c("charid"="probe_id_trimmed"))%>%
+  filter(!is.na(id), visit!=6, OTU=="FT0152") %>% 
+  mutate(sex=gender) %>% 
+  distinct(Sample, .keep_all = T)
 
-typto_lm <- summary(lmerTest::lmer(Abundance ~ visit +(1|id),  data =  trypto_df))
+# Use lm function
+trypto_lm <- lm_stats_function(trypto_df, trypto_df$Abundance, "Tryptophan [log(MS intensities)]")
+trypto_lm
 
 saveRDS(p_trypto, "/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/Tryptophan_RP_neg.rds")
 ```
@@ -1145,7 +1230,6 @@ df_comp_relab  %>%
 
 ### display only significant different metabolites:
 ```{r univariate RP_pos sig, warning=FALSE}
-
 my_comparisons_visit_wo6 <- list(c("1","2"), c("3","4"), c("5","6"), c("7","9"), c("1","3"), c("1", "4"), c("1", "5"), c("1", "6"), c("1", "7"), c("1", "9"))
 
 stats_metabolite_kruskal <- ggpubr::compare_means(Abundance~visit_wo6, data= df_comp_relab,  method = "kruskal.test", p.adjust.method="BH", group.by = "OTU")
@@ -1208,10 +1292,14 @@ p_iva <- met_sig_df%>%
 p_iva
 saveRDS(p_iva, "/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/Ivacaftor_RP_pos.rds")
 
-iva_df <- met_sig_df%>%
-  filter(!is.na(id), visit!=6, OTU=="FT0854") 
+iva_df  <- met_sig_df %>% 
+  left_join(Metadata_sel, by= c("charid"="probe_id_trimmed")) %>% 
+  filter(!is.na(id), visit!=6, OTU=="FT0854") %>% 
+  distinct(Sample, .keep_all = T) %>% 
+  mutate(sex=gender)
 
-iva_lm <- summary(lmerTest::lmer(Abundance ~ visit +(1|id),  data =  iva_df))
+iva_lm <- lm_stats_function(iva_df, iva_df$Abundance, "Ivacaftor [log(MS intensities)]")
+iva_lm
 
 met_results_iva$metabolite="Ivacaftor"
 met_results_trypto$metabolite="Tryptophan"
@@ -1219,8 +1307,12 @@ stats_sig_table <- rbind(met_results_iva, met_results_trypto)
 
 write_csv(stats_sig_table, "/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/Suppl_tables/st3_wilcox_test_iva_trypto.csv")
 
-# copy paste lm results into table above
-iva_lm
-typto_lm
+#  lm results into table
+lm_bind <- rbind(iva_lm, trypto_lm)
+
+
+
+write_csv(lm_bind, "/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/Suppl_tables/st4_lm_stats_iva_trypto.csv")
 
 ```
+
