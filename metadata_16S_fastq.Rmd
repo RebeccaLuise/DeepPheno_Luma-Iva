@@ -1,0 +1,172 @@
+---
+title: "16S seq metadata for upload of fastq files to SRA"
+author: "Rebecca L. Knoll"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(pacman)
+
+pacman::p_load(tidyverse, magrittr, janitor,knitr)
+```
+
+### read sequencing metadata
+```{r}
+md <- read_csv("/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/Submission_PR/16S_fastq/Sample_Metadata_combine/Blatt 1-Sample_Metadata_combine.csv")
+metadata_complete <- read_delim("/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/data/metadata_complete.csv")
+metadata_complete <- metadata_complete %>% 
+  mutate(id_visit=paste(id, visit, sep="_"))
+
+md <- md %>% 
+    filter(project=="Orkambi") 
+
+md$extracted_sample_name <- substr(md$X.SampleID, 3, 6)
+
+# Function to remove characters at positions 3 and 4
+remove_chars_3_and_4 <- function(x) {
+  paste0(substring(x, 1, 2), substring(x, 5))
+}
+
+# Apply the function to the X.SampleID column
+metadata_complete$extracted_sample_name <- sapply(metadata_complete$probe_id, remove_chars_3_and_4)
+metadata_complete$extracted_sample_name <- substr(metadata_complete$grouping, 1, 4)
+
+md <- md %>% 
+  left_join(metadata_complete, by="extracted_sample_name")
+
+# Remove columns where all values are NA
+md_cleaned <- md %>% select(where(~ !all(is.na(.))))
+
+# add LUM/IVA
+md_cleaned <- md_cleaned %>% 
+  mutate(lumacaftor_ivacaftor = case_when(visit.y== 1~0, T~1))
+
+# summarize medicatation data
+data <- md_cleaned %>% 
+  select(X.SampleID, lumacaftor_ivacaftor, na_cl_6_percent, na_cl_3_percent, naproxen, salbutamol, salmeterol, luffanest_homeopath, acc, cortison_inhal,cortison_nasenspray, cetirizin_b_b, contramutan_eupatorium_perfoliatum_echinacea, dexamethason_infectodexakrupp_b_b, fenoterol, fresubin_nutrini, ipatropium, luffanest_homeopath, movicol, monapax_homeopath, omeprazole10mg, pulmozyme_dn_aase, pancreatic_enzymes, ursodeoxycholsaure, vitamines)
+
+# Transform the dataframe
+result <- data %>%
+  pivot_longer(
+    cols = -X.SampleID, 
+    names_to = "variable", 
+    values_to = "value"
+  ) %>%
+  filter(value == 1) %>%
+  group_by(X.SampleID) %>%
+  summarise(
+    medications = paste(variable, collapse = ", ")
+  )
+
+md_cleaned <- md_cleaned %>% 
+  left_join(result, by="X.SampleID")
+
+md_cleaned$patient <- substr(md_cleaned$Label, 1, 2)
+
+md_cleaned <- md_cleaned %>% 
+  mutate(sex= case_when(gender==1 ~"female", gender==0~"male"))
+
+```
+
+### create metadata sheet for upload of fastq files to SRA
+```{r}
+file <- read_csv("/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/Submission_PR/16S_fastq/file_list.csv", col_names = F)
+colnames(file)<-"file.name"
+
+
+# Function to extract substring and remove leading "19"
+# Function to extract substring and remove leading "19"
+extract_filename <- function(filename) {
+  sub("_.*$", "", sub("^19_", "", filename))
+}
+
+# Apply the function to the file.name column
+file$extracted <- sapply(file$file.name, extract_filename)
+
+# Print the dataframe
+print(file)
+
+md_cleaned <- md_cleaned %>% 
+  left_join(file, by=c("X.SampleID"="extracted"))
+
+md_cleaned <- md_cleaned %>% 
+  filter(!is.na(file.name))
+
+md_cleaned$file.name
+
+# Filter samples with R1 in the filename
+md_cleaned_R1 <- subset(md_cleaned, grepl("R1", file.name))
+md_cleaned_R2 <- subset(md_cleaned, grepl("R2", file.name))
+md_cleaned <- md_cleaned_R1
+
+md_cleaned_R2$file.name
+```
+
+```{r}
+
+# template for SRA
+# Create a dataframe with the specified columns
+columns <- c("sample_name", "sample_title", "bioproject_accession", "organism", "collection_date", "env_broad_scale", 
+             "env_local_scale", "env_medium", "geo_loc_name", "host", "lat_lon", "amniotic_fluid_color", "blood_blood_disord", 
+             "chem_administration", "collection_method", "diet_last_six_month", "drug_usage", "ethnicity", "foetal_health_stat", 
+             "gestation_state", "host_age", "host_body_mass_index", "host_body_product", "host_body_temp", "host_diet", 
+             "host_disease", "host_family_relationship", "host_genotype", "host_height", "host_hiv_stat", "host_last_meal", 
+             "host_occupation", "host_phenotype", "host_pulse", "host_sex", "host_subject_id", "host_symbiont", 
+             "host_tissue_sampled", "host_tot_mass", "ihmc_medication_code", "isolation_source", "kidney_disord", 
+             "maternal_health_stat", "medic_hist_perform", "misc_param", "neg_cont_type", "nose_throat_disord", "omics_observ_id", 
+             "organism_count", "oxy_stat_samp", "perturbation", "pet_farm_animal", "pos_cont_type", "pulmonary_disord", 
+             "ref_biomaterial", "rel_to_oxygen", "samp_collect_device", "samp_mat_process", "samp_salinity", "samp_size", 
+             "samp_store_dur", "samp_store_loc", "samp_store_temp", "samp_vol_we_dna_ext", "size_frac", "smoker", 
+             "source_material_id", "study_complt_stat", "temp", "travel_out_six_month", "twin_sibling", "urine_collect_meth", 
+             "urogenit_tract_disor", "weight_loss_3_month", "description")
+
+# Create an empty dataframe with the specified columns
+df <- as.data.frame(matrix(ncol = length(columns), nrow = nrow(md_cleaned)))
+colnames(df) <- columns
+
+# View the structure of the dataframe
+str(df)
+
+# Add X.SampleID from md as sample_name in df
+df$sample_name <- md_cleaned$file.name
+df$sample_title <- md_cleaned$grouping.x
+df$organism <- "Metagenome"
+df$collection_date <- md_cleaned$visit_date
+df$env_broad_scale <- "Human microbiome"
+df$env_local_scale <- paste(md_cleaned$material.x, "microbiome", sep=" ")
+df$env_medium <- "native"
+df$geo_loc_name <- "Mainz, Germany"
+df$host <- "Homo sapiens"
+df$lat_lon <- "50, 8.3"
+df$drug_usage <- md_cleaned$medications
+df$ethnicity <- "caucasian"
+df$host_age <- md_cleaned$age.y
+df$host_disease <- "Cystic fibrosis"
+df$host_genotype <- "F508del_homozygous"
+df$host_height <- md_cleaned$length_cm
+df$host_hiv_stat <- "neg"
+df$host_occupation <- "student"
+df$host_phenotype <- "Cystic fibrosis"
+df$host_sex <- md_cleaned$sex
+df$host_subject_id <- md_cleaned$patient
+df$host_tissue_sampled <- md_cleaned$material.x
+df$pulmonary_disord <- "yes"
+df$samp_store_temp <- "-80°C"
+df$smoker <- "no"
+df$twin_sibling <- "no"
+df$samp_vol_we_dna_ext <- md_cleaned$amount_Stool_mg
+df
+
+write_csv(df, "/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/Submission_PR/16S_fastq/metadata_SRA.csv" )
+```
+# technical metadata
+```{r}
+
+```
+
+
