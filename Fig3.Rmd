@@ -105,7 +105,9 @@ p1 <- metadata_complete %>%
   ylab("BMI Z-score")+
    theme(text = element_text(size=16), legend.position = "none") +
   #ggtitle("Lung Function")+
-  scale_color_manual(name = "id", values = my_colors_id) 
+  scale_color_manual(name = "id", values = my_colors_id)+
+  scale_x_discrete(labels = c(0, 3, 6, 9, 12, 15, 18, 21, 24))+ # Custom x-axis labels
+  xlab("months of treatment")
 p1
 
 # Inflammation 
@@ -119,37 +121,41 @@ p2 <- metadata_complete%>%
   ylab("Fecal calprotectin [µg/g]")+
   theme(text = element_text(size=16), legend.position = "none") +
   scale_color_manual(name = "id", values = my_colors_id) +
-  scale_y_log10()
+  scale_y_log10()+
+  scale_x_discrete(labels = c(0, 3, 6, 9, 12, 15, 18, 21, 24))+ # Custom x-axis labels
+  xlab("months of treatment")
 p2
 
 # liver enzymes
 p3 <- metadata_complete%>%
-  filter(!is.na(GOT)) %>% 
-  filter(!(visit %in% c("6", "8"))) %>% 
-  ggplot(aes(x=visit, y=GOT)) +
+  filter(!is.na(GOT), visit!=6) %>% 
+  ggplot(aes(x=visit_wo8, y=GOT)) +
   theme_minimal()+
   geom_point(aes(color = as_factor(id)), size=2.5) +
-  geom_line(aes(x = visit, group = as_factor(id), color = as_factor(id),alpha=0.7), size=3) +
+  geom_line(aes(x = visit_wo8, group = as_factor(id), color = as_factor(id),alpha=0.7), size=3) +
   geom_boxplot(aes(alpha=0.7), outlier.colour = NA) +
   ylab("ASAT [U/I] in serum")+
   xlab("visit")+
   theme(text = element_text(size=16), legend.position = "none") +
-  scale_color_manual(name = "id", values = my_colors_id)
+  scale_color_manual(name = "id", values = my_colors_id)+
+  scale_x_discrete(labels = c("0", "3", "6", "9", "12", "18", "24*"))+ # Custom x-axis labels
+  xlab("months of treatment")
 p3
 
 p4 <- metadata_complete%>%
-  filter(!is.na(GPT)) %>% 
-  filter(!(visit %in% c("6", "8"))) %>% 
+  filter(!is.na(GPT), visit!=6)%>% 
   ggplot(aes(x=visit_wo8, y=GPT)) +
   theme_minimal()+
   geom_point(aes(color = as_factor(id)), size=2.5) +
-  geom_line(aes(x = visit, group = as_factor(id), color = as_factor(id),alpha=0.7), size=3) +
+  geom_line(aes(x = visit_wo8, group = as_factor(id), color = as_factor(id),alpha=0.7), size=3) +
   geom_boxplot(aes(alpha=0.7), outlier.colour = NA) +
   ylab("ALAT [U/I] in serum")+
   xlab("visit")+
   theme(text = element_text(size=16), legend.position = "none") +
   scale_color_manual(name = "id", values = my_colors_id)+
-  scale_y_log10()
+  scale_y_log10()+
+  scale_x_discrete(labels = c("0", "3", "6", "9", "12", "18", "24*"))+ # Custom x-axis labels
+  xlab("months of treatment")
 p4
 
 # Stool Microbiome
@@ -162,7 +168,9 @@ p5 <- plot_richness(ps_orkambi_stool, x = "visit", measures = c("Shannon")) +
   ylab("Shannon Index")+
   theme(text = element_text(size=16), legend.position = "none",strip.background = element_blank(),  # Remove the gray bar
         strip.text = element_blank() )+ # Remove the facet labels) 
-  ggtitle("Stool alpha-diversity")
+  ggtitle("Stool alpha-diversity")+
+  scale_x_discrete(labels = c(0, 3, 6, 9, 12, 15, 18, 21, 24))+ # Custom x-axis labels
+  xlab("months of treatment")
 p5
 
 plot_ord_data_st <- ordinate(ps_orkambi_stool_rel, "NMDS", "bray")
@@ -194,15 +202,13 @@ grid_arranged <- grid.arrange(
 # Print or save the arranged plot
 print(grid_arranged)
 
-ggsave(plot=grid_arranged, "~/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/gastro_fig.png",dpi = 600, width = 12, height = 12)
+ggsave(plot=grid_arranged, "~/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/gastro_fig.pdf", width = 12, height = 12)
 ```
 
 # Statistics
 ```{r}
 library(dplyr)
 library(lmerTest)
-
-# as we do not have visit 6 and 8 blood measurements, I exclude those from the metadata:
 
 lm_stats_function <- function(data, variable_of_interest, label) {
   lm <- summary(lmerTest::lmer({{ variable_of_interest }} ~ visit + sex + age + (1|id), data = data))
@@ -275,19 +281,89 @@ bmi_stats
 
 cal_stats <- lm_stats_function(metadata_complete, metadata_complete$calprotectin, "Calprotectin [µg/g] ")
 cal_stats
+```
 
-asat_stats <- lm_stats_function(metadata_complete, metadata_complete$GOT, "ASAT [U/I]")
+
+```{r}
+# as we do not have visit 6 and 8 blood measurements, I exclude those from the metadata:
+
+lm_stats_function_wo8 <- function(data, variable_of_interest, label) {
+  lm <- summary(lmerTest::lmer({{ variable_of_interest }} ~ visit_wo8 + sex + age + (1|id), data = data))
+#lm <- summary(lmerTest::lmer(GOT ~ visit_wo8 + sex + age + (1|id), data = metadata_complete))
+   
+  coefs <- data.frame(coef(lm))
+  fdr <- p.adjust(coefs$Pr...t.., method = "fdr", n = nrow(coefs))
+
+  lm_stats <- bind_cols(coefs, fdr) %>%
+    mutate(p = Pr...t..) %>%
+    mutate(fdr = ...6) %>%
+    select(-c(Pr...t.., ...6)) %>%
+    rownames_to_column() %>%
+    mutate(Months_after_ETI_start = rowname) %>%
+    mutate(Months_after_ETI_start = case_when(
+      Months_after_ETI_start == "(Intercept)" ~ "Baseline (Intercept)",
+      Months_after_ETI_start == "visit_wo82" ~ "3",
+      Months_after_ETI_start == "visit_wo83" ~ "6",
+      Months_after_ETI_start == "visit_wo84" ~ "9",
+      Months_after_ETI_start == "visit_wo85" ~ "12",
+      Months_after_ETI_start == "visit_wo87" ~ "18",
+      Months_after_ETI_start == "visit_wo89" ~ "24",
+      Months_after_ETI_start == "sex" ~ "sex",
+      Months_after_ETI_start == "age" ~ "age_y"
+    )) %>%
+    mutate(fdr_star = case_when(
+      fdr <= 0.001 ~ "***",
+      fdr <= 0.01 ~ "**",
+      fdr <= 0.05 ~ "*",
+      fdr <= 0.1 ~ ".",
+      fdr >= 0.1 ~ "ns"
+    )) %>%
+    select(-rowname) %>%
+    select(Months_after_ETI_start, Estimate, Std..Error, df, t.value, p, fdr, fdr_star) %>%
+    mutate(p = round(p, 5)) %>%
+    mutate(fdr = round(fdr, 5))
+
+
+# Print lm stats into data frame and add N of observations
+  nobs_per_visit <- data %>%
+    filter(!is.na({{ variable_of_interest }})) %>% 
+    group_by(visit_wo8) %>%
+    summarise(N_obs = n()) %>% 
+    mutate(Months_after_ETI_start = case_when(
+      visit_wo8 == "1" ~ "Baseline (Intercept)",
+      visit_wo8 == "2" ~ "3",
+      visit_wo8 == "3" ~ "6",
+      visit_wo8 == "4" ~ "9",
+      visit_wo8 == "5" ~ "12",
+      visit_wo8 == "6" ~ "15",
+      visit_wo8 == "7" ~ "18",
+      visit_wo8 == "8" ~ "21",
+      visit_wo8 == "9" ~ "24"
+    )) %>% 
+    mutate(Total_N_obs = sum(N_obs)) %>% 
+    select(-visit_wo8)
+
+  # Merge the two data frames
+  lmm <- left_join(lm_stats, nobs_per_visit, by = "Months_after_ETI_start") 
+  lmm$variable <-  label # Add variable of interest to dataframe
+  lmm <- lmm %>% 
+    select(variable, everything())
+  return(lmm)
+}
+
+asat_stats <- lm_stats_function_wo8(metadata_complete, metadata_complete$GOT, "ASAT [U/I]")
 asat_stats
 
-alat_stats <- lm_stats_function(metadata_complete, metadata_complete$GPT, "ALAT [U/I]")
+alat_stats <- lm_stats_function_wo8(metadata_complete, metadata_complete$GPT, "ALAT [U/I]")
 alat_stats
 
 # combine stats table
 systemic_stats <- rbind(bmi_stats,cal_stats,asat_stats,alat_stats)
 
-write_csv(systemic_stats, "/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/Suppl_tables/st4_gastro_responses_stats.csv")
+write_csv(systemic_stats, "/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/Suppl_tables/st6_gastro_responses_stats.csv")
+```
 
-
+```{r}
 ### PERMANOVA on stool beta-diversity
 
 BC_dist <- phyloseq::distance(ps_orkambi_stool_rel, method = "bray")

@@ -1,5 +1,5 @@
 ---
-title: "Figure 1: Systemic response"
+title: "Figure 2: Systemic response"
 author: "Rebecca L. Knoll"
 date: "`r Sys.Date()`"
 output: html_document
@@ -40,7 +40,7 @@ seq_quali <- Metadata_filt_2_1_9  %>%
             iqr= IQR(total_reads),
             median=median(total_reads))
 
-renv::install("writexl")
+
 writexl::write_xlsx(seq_quali, "/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/16S_seq_quality.xlsx")
 
 Metadata_filt_2_1_9  %>% 
@@ -55,7 +55,7 @@ metadata_complete <- metadata_complete %>%
   mutate(id_visit=paste(id, visit, sep="_")) %>% 
   mutate(sex=gender)
 
-metadata_complete[metadata_complete  == 9999] <- NA # replace placeholders by the study team with N
+metadata_complete[metadata_complete  == 9999] <- NA # replace placeholders by the study team with NA
 metadata_complete[metadata_complete  == 99999] <- NA
 # combine with liver enzymes
 liver_df <- readxl::read_excel("/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/Liver_enzymes_all.xlsx")
@@ -116,13 +116,14 @@ p1 <- metadata_complete %>%
   theme(text = element_text(size=16), legend.position = "left",legend.margin = margin(50, 50, 50, 50), legend.key.size = unit(2, "lines"),  # Adjust the size of legend keys
            legend.text = element_text(size = 14)) +
   guides(alpha = FALSE)+
-  scale_color_manual(name = "id", values = my_colors_id) #+
-  #stat_compare_means(comparisons = )
+  scale_color_manual(name = "id", values = my_colors_id)+
+  scale_x_discrete(labels = c("0", "3", "12"))+ # Custom x-axis labels
+  xlab("months of treatment")
 p1
 
 # Inflammation 
 p2 <- metadata_complete %>%
-  filter(!is.na(ig_g), visit != "6") %>%  # Remove rows with NA in ig_g
+  filter(!is.na(ig_g), visit != "6", visit!="8") %>%  # Remove rows with NA in ig_g
   ggplot(aes(x = visit, y = ig_g)) +
   theme_minimal()+
   geom_point(aes(color = as_factor(id)), size=2.5) +
@@ -132,7 +133,10 @@ p2 <- metadata_complete %>%
   xlab("visit") +
   theme(text = element_text(size = 16), legend.position = "none") +
   scale_color_manual(name = "id", values = my_colors_id) +
-  scale_y_log10()
+  scale_y_log10()+
+  scale_x_discrete(labels = c("0", "3", "6", "9", "12", "18", "24*"))+ # Custom x-axis labels
+  xlab("months of treatment")
+
 
 p3 <- metadata_complete%>%
   filter(!is.na(leukos), visit!="6") %>% 
@@ -145,7 +149,9 @@ p3 <- metadata_complete%>%
   xlab("visit")+
   theme(text = element_text(size=16), legend.position = "none") +
   scale_color_manual(name = "id", values = my_colors_id)+
-  scale_y_log10()
+  scale_y_log10()+
+  scale_x_discrete(labels = c("0", "3", "6", "9", "12", "18", "24*"))+ # Custom x-axis labels
+  xlab("months of treatment")
 
  # Metabolome
 # load Metabolome figures from Metabolome script via loadRDS
@@ -161,7 +167,9 @@ p4 <- p4 +
   xlab("visit")+
   theme_minimal()+
   theme(text = element_text(size=16), legend.position = "none") +
-  scale_color_manual(name = "id", values = my_colors_id)
+  scale_color_manual(name = "id", values = my_colors_id)+
+  scale_x_discrete(labels = c("0", "3", "6", "9", "12", "18", "24"))+ # Custom x-axis labels
+  xlab("months of treatment")
   
 p5 <- p5+
   geom_point(aes(color = as_factor(id)), size=2.5) +
@@ -172,7 +180,9 @@ p5 <- p5+
   xlab("visit")+
   theme_minimal()+
   theme(text = element_text(size=16), legend.position = "none") +
-  scale_color_manual(name = "id", values = my_colors_id)
+  scale_color_manual(name = "id", values = my_colors_id)+
+  scale_x_discrete(labels = c("0", "3", "6", "9", "12", "18", "24"))+ # Custom x-axis labels
+  xlab("months of treatment")
 
 library(gridExtra)
 legend <- cowplot::get_legend(p1)
@@ -294,13 +304,12 @@ crp_stats <- lm_stats_function(metadata_complete_wo68, metadata_complete_wo68$cr
 crp_stats
 
 # combine stats table
-systemic_stats <- rbind(sweat_stats, igg_stats, leuko_stats, bsg_stats, ige_stats)
+systemic_stats <- rbind(sweat_stats, igg_stats, leuko_stats, bsg_stats, ige_stats, crp_stats)
 
-write_csv(systemic_stats, "/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/Suppl_tables/st1_systemic_responses_stats.csv")
+write_csv(systemic_stats, "/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/Suppl_tables/st2_systemic_responses_stats.csv")
 
 ```
 
 ```{r}
 sessionInfo()
 ```
-

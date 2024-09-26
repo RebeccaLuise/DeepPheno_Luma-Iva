@@ -164,9 +164,5 @@ df
 
 write_csv(df, "/Users/rebecca/Documents/Forschung/Orkambi_Kids/Paper/Submission_PR/16S_fastq/metadata_SRA.csv" )
 ```
-# technical metadata
-```{r}
-
-```
 
 

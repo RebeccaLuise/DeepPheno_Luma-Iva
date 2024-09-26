@@ -142,9 +142,11 @@ p1 <- metadata_complete %>%
   geom_boxplot(aes(alpha=0.7), outlier.colour = NA) +
   ylab("Delta ppFEV1 [%] from baseline")+
    theme(text = element_text(size=16), legend.position = "none") +
-  #ggtitle("Lung Function")+
-  scale_color_manual(name = "id", values = my_colors_id) 
+  scale_color_manual(name = "id", values = my_colors_id)+
+  scale_x_discrete(labels = c(0, 3, 6, 9, 12, 15, 18, 21, 24))+ # Custom x-axis labels
+  xlab("months of treatment")
 p1
+
 # Inflammation 
 p2 <- metadata_complete%>%
   filter(visit %in% c("1","2","3","4","5")) %>%
@@ -156,7 +158,9 @@ p2 <- metadata_complete%>%
   ylab("IL-1ß in sputum [pg/ml]")+
   theme(text = element_text(size=16), legend.position = "none") +
   scale_color_manual(name = "id", values = my_colors_id)+
-  scale_y_log10()
+  scale_y_log10()+
+  scale_x_discrete(labels = c(0, 3, 6, 9, 12, 15, 18, 21, 24))+ # Custom x-axis labels
+  xlab("months of treatment")
 p2
 
 p3 <- metadata_complete%>%
@@ -169,10 +173,63 @@ p3 <- metadata_complete%>%
   ylab("IL-8 in sputum [pg/ml]")+
   theme(text = element_text(size=16), legend.position = "none") +
   scale_color_manual(name = "id", values = my_colors_id)+
-  scale_y_log10()
+  scale_y_log10()+
+  scale_x_discrete(labels = c(0, 3, 6, 9, 12, 15, 18, 21, 24))+ # Custom x-axis labels
+  xlab("months of treatment")
 p3
 
 ```
+```{r}
+
+p8 <- metadata_complete%>%
+  filter(visit %in% c("1","2","3","4","5")) %>%
+  ggplot(aes(x=visit, y= ne)) +
+  theme_minimal()+
+  geom_point(aes(color = as_factor(id)), size=2.5) +
+  geom_line(aes(x = visit, group = as_factor(id), color = as_factor(id),alpha=0.7), size=3) +
+  geom_boxplot(aes(alpha=0.7), outlier.colour = NA) +
+  ylab("Neutrophile elastase [g/l]")+
+  theme(text = element_text(size=16), legend.position = "none") +
+  scale_color_manual(name = "id", values = my_colors_id)+
+  scale_y_log10()+
+  scale_x_discrete(labels = c(0, 3, 6, 9, 12, 15, 18, 21, 24))+ # Custom x-axis labels
+  xlab("months of treatment")
+
+p7 <- metadata_complete%>%
+  filter(visit %in% c("1","2","3","4","5")) %>%
+  ggplot(aes(x=visit, y= tn_falpha)) +
+  theme_minimal()+
+  geom_point(aes(color = as_factor(id)), size=2.5) +
+  geom_line(aes(x = visit, group = as_factor(id), color = as_factor(id),alpha=0.7), size=3) +
+  geom_boxplot(aes(alpha=0.7), outlier.colour = NA) +
+  ylab("TNF-alpha [pg/ml]")+
+  theme(text = element_text(size=16), legend.position = "none") +
+  scale_color_manual(name = "id", values = my_colors_id)+
+  scale_y_log10()+
+  scale_x_discrete(labels = c(0, 3, 6, 9, 12, 15, 18, 21, 24))+ # Custom x-axis labels
+  xlab("months of treatment")
+
+p6 <- metadata_complete%>%
+  filter(visit %in% c("1","2","3","4","5")) %>%
+  ggplot(aes(x=visit, y= il6)) +
+  theme_minimal()+
+  geom_point(aes(color = as_factor(id)), size=2.5) +
+  geom_line(aes(x = visit, group = as_factor(id), color = as_factor(id),alpha=0.7), size=3) +
+  geom_boxplot(aes(alpha=0.7), outlier.colour = NA) +
+  ylab("IL-6 [pg/ml]")+
+  guides(color = guide_legend(title = "id", nrow=1, byrow=TRUE, title.position = "left"), alpha="none")+
+  theme(text = element_text(size=16), legend.position = "bottom") +
+  scale_color_manual(name = "id", values = my_colors_id)+
+  scale_y_log10()+
+  scale_x_discrete(labels = c(0, 3, 6, 9, 12, 15, 18, 21, 24))+ # Custom x-axis labels
+  xlab("months of treatment")
+
+inf_all<- ggarrange(p7,p8,p6, ncol = 3, legend.grob = get_legend(p6), labels = c("A","B","C"))
+ inf_all
+ggsave("~/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/suppFig_inflammation_sputum.png",inf_all,dpi = 300, width = 10, height = 4)
+
+```
+
 
 ```{r}
 
@@ -279,7 +336,8 @@ v2 <- vegan::adonis2(BC_dist ~ visit + id + dominantGenus+ pp_fev1+ ab365vorher 
 
 v1_df <- clean_names(as_tibble(v1))
 v1_df$variable<-rownames(v1_df)
-variable_name <- c("sample type" , "sample time point" , "id" , "dominant genus", "pp_fev1", "ab365" , "ab15", "residual", "Total")
+variable_name <- c( "sample time point" , "id" , "dominant genus", "pp_fev1", "ab365" , "ab15", "residual", "Total")
+
 v1_df_sputum <- v1_df%>%
   mutate(variable=variable_name) %>% 
   mutate(comparison = "sputum samples")
@@ -316,7 +374,7 @@ v2 <- vegan::adonis2(BC_dist ~ visit + id + dominantGenus+ ab365vorher + ab15vor
 # bind tables
 v1_df <- clean_names(as_tibble(v1))
 v1_df$variable<-rownames(v1_df)
-variable_name <- c("sample type" , "sample time point" , "id" , "dominant genus", "pp_fev1", "ab365" , "ab15", "residual", "Total")
+variable_name <- c("sample time point" , "id" , "dominant genus", "pp_fev1", "ab365" , "ab15", "residual", "Total")
 v1_df_throat <- v1_df%>%
   mutate(variable=variable_name) %>% 
   mutate(comparison = "throat samples")
@@ -381,7 +439,7 @@ grid_arranged <- grid.arrange(
 # Print or save the arranged plot
 print(grid_arranged)
 
-ggsave(plot = grid_arranged,"~/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/resp_fig.png",dpi = 600, width = 15, height = 12)
+ggsave(plot = grid_arranged,"~/Documents/Forschung/Orkambi_Kids/Paper/DeepPheno_Luma-Iva/resp_fig.pdf", width = 15, height = 12)
 ```
 
 # Statistics
