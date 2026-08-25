@@ -41,41 +41,6 @@ When using the processed data or analysis code from this repository, please cite
 
 ---
 
-## Study design
-
-The dataset contains longitudinal measurements from eight children with cystic fibrosis homozygous for the F508del mutation who initiated lumacaftor/ivacaftor therapy.
-
-Participants were followed for up to nine visits over 24 months:
-
-| Visit | Time relative to treatment initiation |
-|---|---|
-| V1 | Baseline |
-| V2 | 3 months |
-| V3 | 6 months |
-| V4 | 9 months |
-| V5 | 12 months |
-| V6 | 15 months |
-| V7 | 18 months |
-| V8 | 21 months |
-| V9 | 24 months |
-
-Clinical measurements and biospecimens collected across the study included:
-
-- blood/serum
-- stool
-- sputum
-- deep throat swabs
-- sweat chloride
-- lung-function measurements
-- anthropometric measurements
-- clinical and medication metadata
-
-All eight participants completed the first 12 months of follow-up. Sample and participant availability decreased at later visits because of COVID-19 restrictions and participant availability.
-
-Not every participant was able to provide every sample type at every visit, particularly sputum samples.
-
----
-
 # Data availability
 
 ### Processed data and analysis code
