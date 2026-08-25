@@ -78,14 +78,6 @@ Not every participant was able to provide every sample type at every visit, part
 
 # Data availability
 
-The complete resource is distributed across **three public repositories**.
-
-| Data type | Repository | Persistent identifier |
-|---|---|---|
-| Processed data, metadata, and analysis code | GitHub / Zenodo | **DOI: 10.5281/zenodo.20837397** |
-| Raw 16S rRNA sequencing data | NCBI Sequence Read Archive | **BioProject PRJNA1119982** |
-| Raw serum mass-spectrometry data | MassIVE | **MSV000094922** |
-
 ### Processed data and analysis code
 
 GitHub:
@@ -196,16 +188,6 @@ Processed 16S rRNA gene sequencing data and associated technical/sample metadata
 - stool
 - sputum
 - throat swabs
-
-Microbiome analyses represented in the repository include:
-
-- taxonomic composition
-- dominant taxa
-- Shannon alpha diversity
-- Bray-Curtis dissimilarity
-- ordination analyses
-- comparison of respiratory sample types
-- PERMANOVA analyses
 
 ### Metabolomics data
 
@@ -571,117 +553,6 @@ Additional microbiome exploration:
 This diagram represents the **logical organization of the analyses** rather than a software dependency graph. Individual R Markdown files should be inspected for their specific input paths and package requirements before execution.
 
 ---
-
-# Reproducibility scope
-
-Two levels of reproducibility should be distinguished.
-
-## 1. Reproducing the reported analyses from processed data
-
-For reproduction of the statistical analyses and visualizations presented with the dataset article, users should start with the processed datasets in:
-
-```text
-data/
-```
-
-and use the R Markdown workflows supplied in this repository.
-
-The principal figure-specific entry points are:
-
-```text
-Fig2.Rmd
-Fig3.Rmd
-Fig4.Rmd
-```
-
-The other R Markdown files provide domain-specific data preparation, metabolomics analysis, microbiome processing, and supporting exploratory analyses.
-
-## 2. Reprocessing the raw molecular data
-
-Users wishing to repeat upstream molecular-data processing should retrieve the corresponding raw data from the domain-specific repositories.
-
-### Microbiome
-
-Raw 16S rRNA sequencing reads:
-
-**NCBI SRA BioProject PRJNA1119982**
-
-https://www.ncbi.nlm.nih.gov/bioproject/PRJNA1119982
-
-### Metabolomics
-
-Raw mass-spectrometry files:
-
-**MassIVE MSV000094922**
-
-https://massive.ucsd.edu/ProteoSAFe/dataset.jsp?task=MSV000094922
-
-These large raw molecular datasets are maintained in their respective public repositories rather than duplicated on GitHub.
-
----
-
-# Main analytical methods
-
-For orientation, the principal analytical approaches represented in the dataset and associated workflows include:
-
-### Longitudinal clinical measurements
-
-Repeated clinical measurements were analyzed longitudinally. Exploratory linear mixed-effects models were used for selected analyses, with participant identifier included as a random effect.
-
-### Microbiome
-
-16S rRNA microbiome analyses include:
-
-- ASV inference using DADA2
-- taxonomy assignment using SILVA
-- exclusion of samples with fewer than 2,000 reads
-- Shannon alpha diversity
-- Bray-Curtis dissimilarity
-- NMDS/ordination analyses
-- taxonomic composition
-- dominant-taxa analyses
-- PERMANOVA
-
-### Metabolomics
-
-Serum metabolomics analyses include:
-
-- untargeted LC-MS
-- separate analysis of HILIC−, HILIC+, RP−, and RP+ datasets
-- metabolite annotation using MS1 and MS2 spectral matching
-- multivariate and univariate exploratory analyses
-- longitudinal visualization of selected metabolites
-
----
-
-# Important considerations and limitations
-
-This dataset originates from a **pilot cohort of eight pediatric participants** and should not be interpreted as representative of the broader cystic fibrosis population.
-
-Important considerations when reusing the dataset include:
-
-- all eight participants completed the first 12 months of follow-up
-- follow-up completeness decreased after month 12
-- sample availability differs between visits and biological domains
-- sputum availability was limited because younger participants could not consistently expectorate samples
-- later follow-up was affected by COVID-19 restrictions and participant availability
-- analyses should be interpreted in the context of the small pilot cohort
-
-Despite these limitations, the study provides dense longitudinal phenotyping across clinical, gastrointestinal, respiratory, inflammatory, microbiome, and metabolomic domains.
-
----
-
-# Ethics
-
-All participants were recruited from the Pediatric Pulmonology Outpatient Clinic at the University Medical Center Mainz.
-
-Study participants and their parents provided informed written consent before study inclusion.
-
-The study was approved by the local ethical committee:
-
-**Landesärztekammer Rheinland-Pfalz 2018-13526**
-
-The study was conducted in accordance with the principles of the Declaration of Helsinki.
 
 Clinical trial registration:
 
